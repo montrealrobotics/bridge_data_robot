@@ -71,7 +71,6 @@ class CameraRecorder:
             # If this code is hanging, manually set the info_name in the conf file when defining the IMTopic
             self._camera_info_name= os.path.join(os.path.split(self._topic_name)[0], "camera_info")
         print("Trying to read camera info from ", self._camera_info_name)
-
         self._camera_info = rospy.wait_for_message(self._camera_info_name, CameraInfo)
 
         print("Successfully read camera info")

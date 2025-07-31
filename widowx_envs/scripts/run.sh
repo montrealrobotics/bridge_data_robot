@@ -3,7 +3,7 @@
 bash $(dirname "$0")/setup.sh || exit 1
 
 python_node_string='python_node:=false'
-camera_string='realsense:=true'
+camera_string='realsense:='${REALSENSE}
 
 source /opt/ros/noetic/setup.bash
 source ~/interbotix_ws/devel/setup.bash
@@ -13,5 +13,5 @@ source ~/myenv/bin/activate
 # so when the container is killed the SIGTERM needs to be passed to roslaunch
 exec roslaunch widowx_controller widowx_rs.launch \
     ${video_stream_provider_string} camera_connector_chart:=/tmp/camera_connector_chart \
-    serial_no_camera1:=${REALSENSE_SERIAL} \
-    python_node:=false realsense:=true
+    serial_no_camera1:=${SERIAL} \
+    python_node:=false realsense:=${REALSENSE}

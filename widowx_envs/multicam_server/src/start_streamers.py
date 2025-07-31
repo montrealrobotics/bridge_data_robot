@@ -70,6 +70,8 @@ def process_camera_connector_chart():
     providers = []
     topic_names = []
     for topic_name, usb_id in connector_chart_dict.items():
+        print(topic_name)
+        print(usb_id)
         dev_number = get_dev(output_string, usb_id)
         providers.append(dev_number)
         topic_names.append(topic_name)

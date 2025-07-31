@@ -19,7 +19,8 @@ class IMTopic:
     left: int = 0
     dtype: str = "bgr8"
     flip: bool = False
-    info_name: str = None
+    info_name: str = "/C920/camera_info"
+    #info_name: str = "/D435/camera_info"
 
     def process_image(self, img):
         # Check for overcrop conditions

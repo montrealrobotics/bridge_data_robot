@@ -53,7 +53,7 @@ class Streamer:
         self._retry_on_fail = self.get_param("~retry_on_fail")
         self._buffer_queue_size = self.get_param("~buffer_queue_size")
         self._topic_name = self.get_param("~camera_name")
-        self._video_stream_provider = self.get_param("~video_stream_provider")
+        self._video_stream_provider = 0
 
     def start_capture(self):
         self._capture_thread = threading.Thread(target=self.capture)

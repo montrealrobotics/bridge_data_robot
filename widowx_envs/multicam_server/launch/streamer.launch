@@ -30,7 +30,7 @@
         <include file="$(find video_stream_opencv)/launch/camera.launch">
             <arg name="width" default="640"/>
             <arg name="height" default="480"/>
-            <arg name="video_stream_provider" value="$(arg video_stream_provider)" />
+            <arg name="video_stream_provider" value="0" />
             <arg name="fps" value="$(arg fps)" />
             <arg name="frame_id" value="$(arg frame_id)" />
             <arg name="buffer_queue_size" value="$(arg buffer_queue_size)" />
