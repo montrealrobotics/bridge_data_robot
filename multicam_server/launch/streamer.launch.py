@@ -1,11 +1,8 @@
 #! /usr/bin/env python
 
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, GroupAction
-from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import LaunchConfiguration, EnvironmentVariable
-from launch_ros.actions import PushRosNamespace
-from ament_index_python.packages import get_package_share_directory
+from launch.actions import DeclareLaunchArgument
+from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 from launch.conditions import IfCondition, UnlessCondition
 
@@ -59,6 +56,18 @@ def generate_launch_description():
         description='Use Python node'
     )
 
+    sim_time_arg = DeclareLaunchArgument(
+        'use_sim_time',
+        default_value='false',
+        description='Use simulation time'
+    )
+
+    device_0_arg = DeclareLaunchArgument(
+        'device_0',
+        default_value='0',
+        description='Device 0 parameter'
+    )
+
     python_node = Node(
         condition=IfCondition(LaunchConfiguration('python_node')),
         package='multicam_server',
@@ -75,12 +84,14 @@ def generate_launch_description():
         ]
     )
 
-    non_python_node_launch = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource([get_package_share_directory('image_publisher'), '/launch/image_publisher_mono.launch.py']),
-        condition=UnlessCondition(LaunchConfiguration('python_node')),
-        launch_arguments={
-            'use_sim_time': 'false'
-        }.items()
+    non_python_node_launch = Node(
+            condition=UnlessCondition(LaunchConfiguration('python_node')),
+            package='image_publisher', executable='image_publisher_node', output='screen',
+            arguments=[LaunchConfiguration('device_0')],
+            parameters=[{'use_sim_time': LaunchConfiguration('use_sim_time')}],
+            remappings=[('image_raw', '/camera/image_raw'),
+                        ('camera_info', '/camera/camera_info')
+                        ]
     )
 
     return LaunchDescription([
@@ -94,4 +105,6 @@ def generate_launch_description():
         camera_name_arg,
         node_name_arg,
         python_node_arg,
+        sim_time_arg,
+        device_0_arg
     ])
