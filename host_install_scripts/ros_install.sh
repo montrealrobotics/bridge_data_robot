@@ -35,10 +35,10 @@ echo "INSTALLING ROS --------------------------------"
 echo ""
 echo "Checking the Ubuntu version"
 case $version in
-  "trusty" | "xenial" | "bionic" | "focal")
+  "trusty" | "xenial" | "bionic" | "focal" | "jammy")
   ;;
   *)
-    echo "ERROR: This script will only work on Trusty / Xenial / Bionic / Focal. Exit."
+    echo "ERROR: This script will only work on Trusty / Xenial / Bionic / Focal / Jammy. Exit."
     exit 0
 esac
 
@@ -55,6 +55,9 @@ case $version in
   "focal")
   ROS_DISTRO="noetic"
   ;;
+  "jammy")
+  ROS_DISTRO="humble"
+
 esac
 
 relesenum=`grep DISTRIB_DESCRIPTION /etc/*-release | awk -F 'Ubuntu ' '{print $2}' | awk -F ' LTS' '{print $1}'`
@@ -91,6 +94,18 @@ then
   python3-pip \
   python3-catkin-lint \
   python3-catkin-tools \
+  python3-rosinstall \
+  ros-$ROS_DISTRO-desktop-full
+elif [ "$ROS_DISTRO" = "humble" ]
+then
+  sudo apt install -y \
+  python3-rosdep \
+  python3-rosinstall \
+  python3-bloom \
+  python3-rosclean \
+  python3-wstool \
+  python3-pip \
+  python3-ament-lint \
   python3-rosinstall \
   ros-$ROS_DISTRO-desktop-full
 else
