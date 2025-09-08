@@ -1,6 +1,11 @@
+#!/usr/bin/env python3
+
 import numpy as np
-import rospy
+import rclpy
 import os
+import time
+from rclpy.node import Node
+from rclpy.task import Future
 from threading import Lock, Semaphore
 from cv_bridge import CvBridge
 import cv2
@@ -9,6 +14,25 @@ from sensor_msgs.msg import CameraInfo
 import copy
 import hashlib
 import logging
+
+
+def wait_for_message(node, topic, msg_type, timeout=5.0):
+    """Helper to wait for a single message on a topic."""
+    future = Future()
+
+    def cb(msg):
+        if not future.done():
+            future.set_result(msg)
+
+    sub = node.create_subscription(msg_type, topic, cb, 1)
+
+    rclpy.spin_until_future_complete(node, future, timeout_sec=timeout)
+    node.destroy_subscription(sub)
+
+    if future.done():
+        return future.result()
+    else:
+        raise TimeoutError(f"No message received on {topic}")
 
 
 class LatestObservation(object):
@@ -23,7 +47,10 @@ class LatestObservation(object):
             self.reset_tracker()
 
     def reset_tracker(self):
-        self.cv2_tracker = cv2.TrackerMIL_create()
+        if hasattr(cv2, "legacy"):
+            self.cv2_tracker = cv2.legacy.TrackerMIL_create()
+        else:
+            self.cv2_tracker = cv2.TrackerMIL_create()
         self.bbox = None
         self.track_itr = 0
 
@@ -31,18 +58,17 @@ class LatestObservation(object):
         self.save_itr = 0
 
 
-class CameraRecorder:
+class CameraRecorder(Node):
     TRACK_SKIP = 2        # the camera publisher works at 60 FPS but camera itself only goes at 30
     MAX_REPEATS = 100      # camera errors after 10 repeated frames in a row
 
-    def __init__(self, topic_data, opencv_tracking=False, save_videos=False):
-        """
-        :param topic_data:
-        :param opencv_tracking:
-        :param save_videos:
-        :param server_id: if not None run in server mode. If the inference code requires python3 the camera server
-        can still be launched in python2.
-        """
+    def __init__(self, image_topic, opencv_tracking=False, save_videos=False):
+        super().__init__('camera_recorder')
+
+        topic_data = image_topic
+        opencv_tracking = opencv_tracking
+        save_videos = save_videos
+
         self._tracking_enabled, self._save_vides = opencv_tracking, save_videos
 
         self._latest_image = LatestObservation(self._tracking_enabled, self._save_vides)
@@ -67,24 +93,21 @@ class CameraRecorder:
         if topic_data.info_name is not None:
             self._camera_info_name = topic_data.info_name
         else:
-            # Trys to guess the correct camera info name based on ROS conventions.
-            # If this code is hanging, manually set the info_name in the conf file when defining the IMTopic
-            self._camera_info_name= os.path.join(os.path.split(self._topic_name)[0], "camera_info")
+            self._camera_info_name = os.path.join(os.path.split(self._topic_name)[0], "camera_info")
         print("Trying to read camera info from ", self._camera_info_name)
 
-        self._camera_info = rospy.wait_for_message(self._camera_info_name, CameraInfo)
-
+        self._camera_info = wait_for_message(self, self._camera_info_name, CameraInfo)
         print("Successfully read camera info")
 
+        self.create_subscription(Image_msg, topic_data.name, self.store_latest_im, 1)
 
-        rospy.Subscriber(topic_data.name, Image_msg, self.store_latest_im)
-        logger = logging.getLogger('robot_logger')
-        logger.debug('downing sema on topic: {}'.format(topic_data.name))
+        logger = self.get_logger()
+        logger.debug(f'Downing sema on topic: {topic_data.name}')
         success = self._status_sem.acquire(timeout=5)
         if not success:
             print('Still waiting for an image to arrive at CameraRecorder... Topic name:', self._topic_name)
             self._status_sem.acquire()
-        logger.info("Cameras {} subscribed: stream is {}x{}".format(self._topic_data.name, self._cam_width, self._cam_height))
+        logger.info(f"Cameras {self._topic_data.name} subscribed: stream is {self._cam_width}x{self._cam_height}")
 
     def _cam_start_tracking(self, lt_ob, point):
         lt_ob.reset_tracker()
@@ -107,7 +130,7 @@ class CameraRecorder:
         self._cam_start_tracking(self._latest_image, start_points[0])
         self._is_tracking = True
         self._latest_image.mutex.release()
-        rospy.sleep(2)   # sleep a bit for first few messages to initialize tracker
+        time.sleep(2)   # sleep a bit for first few messages to initialize tracker
 
         logging.getLogger('robot_logger').info("TRACKING INITIALIZED")
 
@@ -136,12 +159,10 @@ class CameraRecorder:
     def get_image(self, arg=None):
         self._latest_image.mutex.acquire()
         time_stamp, img_cv2 = self._latest_image.tstamp_img, self._latest_image.img_cv2
-        current_hash = hashlib.sha256(img_cv2.tostring()).hexdigest()
+        current_hash = hashlib.sha256(img_cv2.tobytes()).hexdigest()
         if self._last_hash_get_image is not None:
             if current_hash == self._last_hash_get_image:
-                # logging.getLogger('robot_logger').error('Repeated images, camera queried too fast!')
-                # rospy.signal_shutdown('shutting down.')
-                print('repated images for get_image method!')
+                print('Repeated images for get_image method!')
         self._last_hash_get_image = current_hash
         self._latest_image.mutex.release()
         return time_stamp, img_cv2
@@ -186,35 +207,34 @@ class CameraRecorder:
             latest_obsv.track_itr += 1
 
     def store_latest_im(self, data):
-        self._latest_image.mutex.acquire()
-        # if self._latest_image.tstamp_img is not None:
-        #     print('{} delta t image {}'.format(self._topic_name, rospy.get_time() - self._latest_image.tstamp_img))
+        with self._latest_image.mutex:
+            self._proc_image(self._latest_image, data)
 
-        t0 = rospy.get_time()
-        self._proc_image(self._latest_image, data)
+            current_hash = hashlib.sha256(self._latest_image.img_cv2.tobytes()).hexdigest()
 
-        current_hash = hashlib.sha256(self._latest_image.img_cv2.tostring()).hexdigest()
-        if self._is_first_status:
-            self._cam_height, self._cam_width = self._latest_image.img_cv2.shape[:2]
-            self._is_first_status = False
-            self._status_sem.release()
-        elif self._last_hash == current_hash:
-            if self._num_repeats < self.MAX_REPEATS:
-                self._num_repeats += 1
+            if self._is_first_status:
+                self._cam_height, self._cam_width = self._latest_image.img_cv2.shape[:2]
+                self._is_first_status = False
+                self._status_sem.release()
+
+            elif self._last_hash == current_hash:
+                if self._num_repeats < self.MAX_REPEATS:
+                    self._num_repeats += 1
+                else:
+                    logging.getLogger("robot_logger").error(
+                        f"Too many repeated images. Check camera on topic {self._topic_name}!"
+                    )
+                    self.destroy_node()
+                    rclpy.shutdown()
             else:
-                logging.getLogger('robot_logger').error(f'Too many repeated images.\
-                    Check camera with topic {self._topic_name}!')
-                rospy.signal_shutdown('Too many repeated images. Check camera!')
-        else:
-            self._num_repeats = 0
-        self._last_hash = current_hash
+                self._num_repeats = 0
 
-        if self._save_vides and self._saving:
-            if self._latest_image.save_itr % self.TRACK_SKIP == 0:
-                self._buffers.append(copy.deepcopy(self._latest_image.img_cv2)[:, :, ::-1])
-            self._latest_image.save_itr += 1
-        self._latest_image.mutex.release()
-        # print('time process image', rospy.get_time() - t0)
+            self._last_hash = current_hash
+
+            if self._save_vides and self._saving:
+                if self._latest_image.save_itr % self.TRACK_SKIP == 0:
+                    self._buffers.append(copy.deepcopy(self._latest_image.img_cv2)[:, :, ::-1])
+                self._latest_image.save_itr += 1
 
     @property
     def img_width(self):
@@ -227,28 +247,38 @@ class CameraRecorder:
     @property
     def camera_info(self):
         return self._camera_info
-    
 
 
+def main(args=None):
+    rclpy.init(args=args)
+    node = CameraRecorder("/cam1/image_raw")
 
-if __name__ == '__main__':
-    from multicam_server.topic_utils import IMTopic
-    rospy.init_node("camera_rec_test")
-    imtopic = IMTopic('/cam1/image_raw')
-    rec = CameraRecorder(imtopic)
+    rate = rclpy.Rate(5, node.get_clock())  # 5 Hz
+    start_time = node.get_clock().now().nanoseconds / 1e9
 
-    r = rospy.Rate(5)  # 10hz
-    start_time = rospy.get_time()
     for t in range(20):
-        print('t{} before get image {}'.format(t, rospy.get_time() - start_time))
-        t0 = rospy.get_time()
-        tstamp, im = rec.get_image()
-        # print('get image took', rospy.get_time() - t0)
+        node.get_logger().info(f"t{t} before get image {node.get_clock().now().nanoseconds / 1e9 - start_time:.2f}")
+
+        stamp, im = node.get_image()
+        if im is None:
+            node.get_logger().warn("No image received yet.")
+            rate.sleep()
+            continue
 
         im = cv2.cvtColor(im, cv2.COLOR_BGR2RGB)
 
-        t1 = rospy.get_time()
-        cv2.imwrite(os.environ['EXP'] + '/test_image_t{}_{}.jpg'.format(t, rospy.get_time() - start_time), im)
-        # print('save took ', rospy.get_time() - t1)
+        filename = os.path.join(
+            os.environ["EXP"],
+            f"test_image_t{t}_{node.get_clock().now().nanoseconds/1e9 - start_time:.2f}.jpg"
+        )
+        cv2.imwrite(filename, im)
+        node.get_logger().info(f"Saved {filename}")
 
-        r.sleep()
+        rate.sleep()
+
+    node.destroy_node()
+    rclpy.shutdown()
+
+
+if __name__ == '__main__':
+    main()

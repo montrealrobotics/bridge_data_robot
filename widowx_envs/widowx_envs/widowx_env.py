@@ -20,7 +20,6 @@ from sensor_msgs.msg import Image
 from multicam_server.topic_utils import IMTopic
 from widowx_controller.widowx_controller import WidowX_Controller
 
-##############################################################################
 
 class WidowXEnv(RobotBaseEnv):
   
@@ -120,7 +119,7 @@ class WidowXEnv(RobotBaseEnv):
                 self._controller.move_to_state(startpos, zangle, duration=2)
                 self._reset_previous_qpos()
             except Environment_Exception:
-                self.move_to_startstate()  # retry with different sample position
+                self.move_to_startstate()
 
     def start(self):
         self._controller.set_moving_time(self._hp.move_duration)
@@ -131,7 +130,6 @@ class WidowXEnv(RobotBaseEnv):
     def ask_confirmation(self, ):
         return ask_confirm("Was the trajectory okay? y/n")
 
-##############################################################################
 
 class RandomInit_WidowXEnv(WidowXEnv):
     def move_to_startstate(self):
@@ -151,7 +149,6 @@ class RandomInit_WidowXEnv(WidowXEnv):
         #     self._controller._gripper.open()
 
 
-##############################################################################
 
 class VR_WidowX(WidowXEnv):
     def __init__(self, env_params=None, **kwargs):
@@ -226,7 +223,6 @@ class VR_WidowX(WidowXEnv):
             print('trajectory accepted!')
             return True
 
-##############################################################################
 
 class VR_WidowX_DAgger(VR_WidowX):
     def __init__(self, env_params=None, **kwargs):
@@ -255,7 +251,6 @@ class VR_WidowX_DAgger(VR_WidowX):
             print('unsuccessful trajectory accepted!')
             return 'Failure'
 
-##############################################################################
 
 class StateReachingWidowX(WidowXEnv):
     def __init__(self, env_params=None, fixed_goal=False):
@@ -313,7 +308,6 @@ class StateReachingWidowX(WidowXEnv):
         obs = super(StateReachingWidowX, self).reset(itraj=0)
         return obs
 
-##############################################################################
 
 class ImageReachingWidowX(StateReachingWidowX):
     def __init__(self, env_params=None, publish_images=True, fixed_image_size=64, fixed_goal=False):
@@ -339,7 +333,7 @@ class ImageReachingWidowX(StateReachingWidowX):
 
     def _default_hparams(self):
         default_dict = {
-            'camera_topics': [IMTopic('/camera0/image_raw')],
+            'camera_topics': [IMTopic('/camera/image_raw')],
             'image_crop_xywh': None,  # can be a tuple like (0, 0, 100, 100)
             'transpose_image_to_chw': False,  # changes image to CHW format for use with pytorch
             'return_full_image': False,
@@ -442,7 +436,7 @@ class BridgeDataRailRLPrivateWidowX(WidowXEnv):
         default_dict = {
             'gripper_attached': 'custom',
             'skip_move_to_neutral': True,
-            'camera_topics': [IMTopic('/cam0/image_raw')],
+            'camera_topics': [IMTopic('/camera/image_raw')],
             'image_crop_xywh': None,  # can be a tuple like (0, 0, 100, 100)
             # 'camera_topics': [IMTopic('/cam0/image_raw'), IMTopic('/cam1/image_raw'), IMTopic('/cam2/image_raw')],
         }

@@ -22,7 +22,7 @@ def show_video(client, full_image=True):
         img = res["image"]
         img = (img.reshape(3, 256, 256).transpose(1, 2, 0) * 255).astype(np.uint8)
     cv2.imshow("Robot Camera", img)
-    cv2.waitKey(20)  # 20 ms
+    cv2.waitKey(20)
 
 print_yellow = lambda x: print("\033[93m {}\033[00m" .format(x))
 
