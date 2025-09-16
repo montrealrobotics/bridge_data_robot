@@ -13,7 +13,7 @@ class StreamerLauncher(Node):
     def __init__(self):
         super().__init__('start_streamers')
 
-        self.declare_parameter('video_stream_provider', "[1, 2, 3, 4]")
+        self.declare_parameter('video_stream_provider', "")
         self.declare_parameter('fps', 30)
         self.declare_parameter('frame_id', 'world')
         self.declare_parameter('retry_on_fail', False)
@@ -51,9 +51,10 @@ class StreamerLauncher(Node):
         output_string = res.stdout
         providers, topic_names = [], []
         for topic_name, usb_id in connector_chart_dict.items():
-            dev_number = self.get_dev(output_string, usb_id)
-            providers.append(dev_number)
-            topic_names.append(topic_name)
+            if usb_id:
+                dev_number = self.get_dev(output_string, usb_id)
+                providers.append(dev_number)
+                topic_names.append(topic_name)
         return providers, topic_names
 
     def populate_params(self):

@@ -27,7 +27,6 @@ RUN apt-get update -y && apt-get install -y --no-install-recommends \
     tzdata \
     unzip \
     ffmpeg \
-    git-lfs \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 RUN curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key | apt-key add - && \
@@ -46,6 +45,9 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 RUN rosdep init && rosdep update
+RUN curl -s https://packagecloud.io/install/repositories/github/git-lfs/script.deb.sh | bash
+RUN apt-get install git-lfs
+RUN git lfs install
 
 RUN adduser --disabled-password --gecos '' ${USER_ID} && \
     adduser ${USER_ID} sudo && \

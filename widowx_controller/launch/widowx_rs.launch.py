@@ -12,7 +12,7 @@ from ament_index_python.packages import get_package_share_directory
 def generate_launch_description():
     video_stream_provider_arg = DeclareLaunchArgument(
         "video_stream_provider",
-        default_value="0",
+        default_value="",
         description="Video stream provider parameter",
     )
 
