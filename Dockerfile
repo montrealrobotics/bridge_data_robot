@@ -85,7 +85,7 @@ RUN source /opt/ros/humble/setup.bash && \
     cd ~/interbotix_ws && \
     rosdep update && \
     sudo apt update && \
-    rosdep install --from-paths src --ignore-src -r -y && \
+    rosdep install --from-paths src --ignore-src --skip-keys "gazebo_ros2_control gazebo_ros" -r -y && \
     source ~/myenv/bin/activate && \
     rm -rf build log install && \
     colcon build --symlink-install && \

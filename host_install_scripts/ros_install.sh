@@ -76,8 +76,10 @@ if [ ! -e /etc/apt/sources.list.d/ros-latest.list ]; then
 fi
 
 echo "Download the ROS keys"
-sudo apt-key adv --keyserver 'hkp://keyserver.ubuntu.com:80' --recv-key C1CF6E31E6BADE8868B172B4F42ED6FBAB17C654
-
+sudo apt update && sudo apt install curl -y
+export ROS_APT_SOURCE_VERSION=$(curl -s https://api.github.com/repos/ros-infrastructure/ros-apt-source/releases/latest | grep -F "tag_name" | awk -F\" '{print $4}')
+curl -L -o /tmp/ros2-apt-source.deb "https://github.com/ros-infrastructure/ros-apt-source/releases/download/${ROS_APT_SOURCE_VERSION}/ros2-apt-source_${ROS_APT_SOURCE_VERSION}.$(. /etc/os-release && echo $VERSION_CODENAME)_all.deb" # If using Ubuntu derivates use $UBUNTU_CODENAME
+sudo dpkg -i /tmp/ros2-apt-source.deb
 sudo apt update
 
 echo "Installing ROS $ROS_DISTRO"
@@ -105,7 +107,8 @@ then
   python3-rosclean \
   python3-wstool \
   python3-pip \
-  python3-ament-lint \
+  python3-colcon-common-extensions \
+  ros-humble-ament-cmake \
   python3-rosinstall \
   ros-$ROS_DISTRO-desktop-full
 else

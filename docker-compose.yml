@@ -11,7 +11,7 @@ services:
       - ROBONETV2_ARM=wx250s
       - DATA=/home/robonet/trainingdata
       - EXP=/home/robonet/experiments
-      - REALSENSE_SERIAL=_207222071044
+      - REALSENSE_SERIAL=_238722070138
     user: robonet:1002
     stdin_open: true
     tty: true
