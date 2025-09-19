@@ -63,7 +63,7 @@ class GripperController(GripperControllerBase):
             JointSingleCommand, f"/{robot_name}/commands/joint_single", 3
         )
 
-        self._joint_cb_group = MutuallyExclusiveCallbackGroup()
+        self._joint_cb_group = ReentrantCallbackGroup()
         self._joint_subscription = self.node.create_subscription(
             JointState,
             f"/{robot_name}/joint_states",
@@ -77,6 +77,15 @@ class GripperController(GripperControllerBase):
         self._grace_period_until_can_be_marked_as_stopped = 0.1
         self._des_pos = None
         self.des_pos = self._upper_limit
+        timeout_sec = 2.0
+        start = time.time()
+
+        while "left_finger" not in self._angles:
+            if time.time() - start > timeout_sec:
+                if self.node is not None:
+                    self.node.get_logger().warn("Timeout waiting for first joint state.")
+                break
+            rclpy.spin_once(self.node, timeout_sec=0.05)
 
     @property
     def des_pos(self):
@@ -155,7 +164,7 @@ class GripperController(GripperControllerBase):
 
             gripper_command = JointSingleCommand()
             gripper_command.name = "gripper"
-            gripper_command.cmd = pwm
+            gripper_command.cmd = float(pwm)
             self._pub_gripper_command.publish(gripper_command)
 
     def get_gripper_pwm(self, pressure):
@@ -226,7 +235,6 @@ class GripperControllerServer(GripperController, Node):
             callback_group=self._gripper_despos_cb_group,
         )
 
-        # Create timer for main control loop
         self._control_timer = self.create_timer(0.02, self.control_loop)  # 50 Hz
 
     def _gripper_despos_callback(self, msg):
@@ -253,10 +261,10 @@ def main():
         controller = GripperControllerServer(robot_name="wx250s")
 
         executor = MultiThreadedExecutor()
-
+        executor.add_node(controller)
         controller.get_logger().info("Gripper controller server started")
 
-        rclpy.spin(controller, executor)
+        executor.spin()
 
     except KeyboardInterrupt:
         pass

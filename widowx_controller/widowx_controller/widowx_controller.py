@@ -9,6 +9,7 @@ from pyquaternion import Quaternion
 from sensor_msgs.msg import JointState
 from geometry_msgs.msg import TransformStamped
 from rclpy import ok, init
+from rclpy.task import Future
 
 from threading import Lock
 import logging
@@ -26,6 +27,7 @@ from interbotix_xs_modules.xs_robot.arm import (
     InterbotixRobotXSCore,
     InterbotixGripperXSInterface,
 )
+from interbotix_common_modules.common_robot import InterbotixRobotNode
 
 try:
     # older version of interbotix sdk
@@ -220,24 +222,27 @@ class WidowX_Controller(RobotControllerBase, Node):
         enable_rotation="6dof",
         gripper_attached="custom",
         normal_base_angle=0,
+        node=None,
     ):
         """
         gripper_attached: either "custom" or "default"
         """
         if not ok():
             init()
-        # Initialize ROS2 node
-        Node.__init__(self, "widowx_controller")
+        if node is None:
+            self.interbotix_node = InterbotixRobotNode(robot_name)
+        else:
+            self.interbotix_node = node
 
+        Node.__init__(self, 'widowx_controller')
         self.get_logger().info("waiting for widowx_controller to be set up...")
-        self.bot = ModifiedInterbotixManipulatorXS(robot_model=robot_name, node=self)
+        self.bot = ModifiedInterbotixManipulatorXS(robot_model=robot_name, node=self.interbotix_node)
 
         if gripper_params is None:
             gripper_params = {}
 
         self._robot_name = robot_name
 
-        # Set up signal handler for clean shutdown
         signal.signal(signal.SIGINT, self._signal_handler)
         signal.signal(signal.SIGTERM, self._signal_handler)
 
@@ -430,7 +435,7 @@ class WidowX_Controller(RobotControllerBase, Node):
     def move_to_neutral(self, duration=4):
         self.get_logger().info("moving to neutral..")
         try:
-            self.bot.arm.publish_positions(
+            self.bot.arm.set_joint_positions(
                 self.neutral_joint_angles, moving_time=duration
             )
             current_angles = self.get_joint_angles()
@@ -586,6 +591,7 @@ def main():
     robot_name = "wx250s"
     print_debug = True
     gripper_params = {}
+    interbotix_node = InterbotixRobotNode(robot_name)
 
     try:
         controller = WidowX_Controller(
@@ -595,10 +601,13 @@ def main():
             enable_rotation="6dof",
             gripper_attached="custom",
             normal_base_angle=0,
+            node=interbotix_node,
         )
 
         executor = MultiThreadedExecutor()
-        rclpy.spin(controller, executor)
+        executor.add_node(interbotix_node)
+        executor.add_node(controller)
+        executor.spin()
 
     except KeyboardInterrupt:
         pass
@@ -609,3 +618,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

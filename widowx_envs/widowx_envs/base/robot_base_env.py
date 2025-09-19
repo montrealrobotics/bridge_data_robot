@@ -8,6 +8,9 @@ import numpy as np
 from widowx_envs.utils.exceptions import Image_Exception
 import copy
 from widowx_envs.utils import AttrDict
+from rclpy.executors import MultiThreadedExecutor
+import rclpy
+from threading import Thread
 
 from multicam_server.topic_utils import IMTopic
 from multicam_server.camera_recorder import CameraRecorder
@@ -46,6 +49,17 @@ class RobotBaseEnv(BaseEnv):
             gripper_attached=self._hp.gripper_attached,
             gripper_params=self._hp.gripper_params,
             normal_base_angle=self._hp.workspace_rotation_angle_z)
+
+        if not rclpy.ok():
+            rclpy.init(args=None)
+        self._executor = MultiThreadedExecutor()
+        self._executor.add_node(self._controller)
+
+        if hasattr(self._controller, "interbotix_node"):
+            self._executor.add_node(self._controller.interbotix_node)
+
+        self._spin_thread = Thread(target=self._executor.spin, daemon=True)
+        self._spin_thread.start()
 
         logging.getLogger('robot_logger').info('---------------------------------------------------------------------------')
         for name, value in self._hp.items():
