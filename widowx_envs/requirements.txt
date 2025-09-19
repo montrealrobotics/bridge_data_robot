@@ -17,7 +17,7 @@ requests
 nvidia_smi
 rospkg
 modern_robotics==1.1.1
-gym
+gymnasium
 tqdm
 transformations
 ipdb

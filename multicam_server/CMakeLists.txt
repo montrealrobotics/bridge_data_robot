@@ -6,8 +6,6 @@ find_package(ament_cmake_python REQUIRED)
 find_package(rclpy REQUIRED)
 find_package(std_msgs REQUIRED)
 
-include_directories(include)
-
 ament_python_install_package(${PROJECT_NAME})
 install(PROGRAMS
   multicam_server/start_streamers.py

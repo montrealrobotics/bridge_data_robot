@@ -9,19 +9,15 @@ from widowx_envs.utils.exceptions import Image_Exception
 import copy
 from widowx_envs.utils import AttrDict
 
-# Rospkg lib
-import rospy
 from multicam_server.topic_utils import IMTopic
 from multicam_server.camera_recorder import CameraRecorder
 from widowx_controller.widowx_controller import WidowX_Controller
-from widowx_controller.widowx_controller import publish_transform
 
 import logging
 import json
-from gym import spaces
+from gymnasium import spaces
 
 from widowx_envs.utils import read_yaml_file
-import os
 from widowx_envs.utils.exceptions import Environment_Exception
 
 def pix_resize(pix, target_width, original_width):
@@ -235,7 +231,7 @@ class RobotBaseEnv(BaseEnv):
                 self._controller.open_gripper()
 
         t0 = time.time()
-        publish_transform(new_transform, 'commanded_transform')
+        self._controller.publish_transform(new_transform, 'commanded_transform')
 
         self.move_except = False
         if self._hp.catch_environment_except:
@@ -302,7 +298,7 @@ class RobotBaseEnv(BaseEnv):
                 raise Environment_Exception
             obs['state'] = np.concatenate([full_state[:3], full_state[5:]])  # remove roll and pitch since they are (close to) zero
         obs['desired_state'] = self._previous_target_qpos
-        obs['time_stamp'] = rospy.get_time()
+        obs['time_stamp'] = self._controller.get_clock().now()
         obs['eef_transform'] = self._controller.get_cartesian_pose(matrix=True)
         self._last_obs = copy.deepcopy(obs)
         
@@ -321,7 +317,7 @@ class RobotBaseEnv(BaseEnv):
         self._controller.move_to_state(target_xyz, target_zangle, duration=duration)
 
     def _reset_previous_qpos(self):
-        rospy.sleep(0.2)  # TODO (YL) check if this is necessary
+        time.sleep(0.2)  # TODO (YL) check if this is necessary
         self._previous_target_qpos = self.get_full_state()
         # don't track orientation of axes which are not controlled
         if self._hp.action_mode == '3trans1rot':
@@ -409,8 +405,7 @@ class RobotBaseEnv(BaseEnv):
         time_stamps = []
         cam_imgs = []
 
-        # cur_time = rospy.get_time()
-        cur_time = rospy.Time.now()
+        cur_time = self._controller.get_clock().now()
         for recorder in cameras:
             stamp, image = recorder.get_image()
             time_diff = (cur_time - stamp).to_sec()

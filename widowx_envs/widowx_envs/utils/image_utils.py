@@ -1,5 +1,5 @@
 import cv2
-import moviepy.editor as mpy
+import moviepy as mpy
 import os
 import numpy as np
 from PIL import Image, ImageDraw

@@ -13,14 +13,14 @@ class TrajectoryCollector(Configurable):
     def __init__(self, config, gpu_id=0, ngpu=1):
         self._hp = self._default_hparams()
         self._override_defaults(config)
-        if self._hp.log_dir is not "":
+        if self._hp.log_dir != "":
             self._hp.agent['log_dir'] = self._hp.log_dir
         self.agent = self._hp.agent['type'](self._hp.agent)
         self.agent._hp.env_handle = self.agent.env
         self.agent._hp.gpu_id = gpu_id
         self.agent._hp.ngpu = ngpu
 
-        if isinstance(self._hp.policy, list): # in case multiple policies are used
+        if isinstance(self._hp.policy, list):
             self.policies = []
             for policy_param in self._hp.policy:
                 self.policies.append(policy_param['type'](self.agent._hp, policy_param))

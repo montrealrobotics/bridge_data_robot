@@ -11,11 +11,10 @@ from widowx_envs.utils.utils import ask_confirm
 from skimage.transform import resize
 
 import os
-from gym import spaces
+from gymnasium import spaces
 import random
 from widowx_envs.utils.exceptions import Environment_Exception
 
-import rospy
 from sensor_msgs.msg import Image
 from multicam_server.topic_utils import IMTopic
 from widowx_controller.widowx_controller import WidowX_Controller
@@ -201,7 +200,7 @@ class VR_WidowX(WidowXEnv):
         buttons = self.get_vr_buttons()
         while not buttons[start_key]:
             buttons = self.get_vr_buttons()
-            rospy.sleep(0.01)
+            time.sleep(0.01)
             if 'B' in buttons and buttons['B']:
                 self.move_to_neutral()
                 print("moved to neutral. waiting for {} button press to start recording.".format(start_key))
@@ -214,7 +213,7 @@ class VR_WidowX(WidowXEnv):
         buttons = self.get_vr_buttons()
         while not buttons['A'] and not buttons['RJ']:
             buttons = self.get_vr_buttons()
-            rospy.sleep(0.01)
+            time.sleep(0.01)
 
         if buttons['RJ']:
             print('trajectory discarded!')
@@ -235,11 +234,11 @@ class VR_WidowX_DAgger(VR_WidowX):
 
         while buttons['A'] or buttons['RJ'] or buttons['RTr']:
             buttons = self.get_vr_buttons()
-            rospy.sleep(0.01)
+            time.sleep(0.01)
 
         while not buttons['A'] and not buttons['RJ'] and not buttons['RTr']:
             buttons = self.get_vr_buttons()
-            rospy.sleep(0.01)
+            time.sleep(0.01)
 
         if buttons['RJ']:
             print('trajectory discarded!')
@@ -329,7 +328,7 @@ class ImageReachingWidowX(StateReachingWidowX):
         if self.publish_images:
             from cv_bridge import CvBridge
             self.bridge = CvBridge()
-            self.image_pub = rospy.Publisher("/robonetv2_image/image_raw", Image, queue_size=10)
+            self.image_pub = self._controller.create_publisher(Image, "/robonetv2_image/image_raw", 10)
 
     def _default_hparams(self):
         default_dict = {

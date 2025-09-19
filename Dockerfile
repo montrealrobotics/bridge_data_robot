@@ -52,6 +52,7 @@ RUN git lfs install
 RUN adduser --disabled-password --gecos '' ${USER_ID} && \
     adduser ${USER_ID} sudo && \
     echo '%sudo ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers
+
 USER ${USER_ID}
 WORKDIR /home/${USER_ID}
 
@@ -69,20 +70,25 @@ COPY widowx_envs/requirements.txt /tmp/requirements.txt
 RUN source /opt/ros/humble/setup.bash && source ~/interbotix_ws/install/setup.bash && python3 -m venv --system-site-packages ~/myenv
 RUN source ~/myenv/bin/activate && pip install wheel && pip install -r /tmp/requirements.txt
 
-COPY ./widowx_envs /home/${USER_ID}/widowx_envs
-COPY ./multicam_server /home/${USER_ID}/multicam_server
-COPY ./widowx_controller /home/${USER_ID}/widowx_controller
+COPY --chown=${USER_ID}:${USER_ID} ./widowx_envs /home/${USER_ID}/widowx_envs
+COPY --chown=${USER_ID}:${USER_ID} ./multicam_server /home/${USER_ID}/multicam_server
+COPY --chown=${USER_ID}:${USER_ID} ./widowx_controller /home/${USER_ID}/widowx_controller
+COPY --chown=${USER_ID}:${USER_ID} ./widowx_controller_interfaces /home/${USER_ID}/widowx_controller_interfaces
 RUN ln -s ~/widowx_envs ~/interbotix_ws/src/
 RUN ln -s ~/multicam_server ~/interbotix_ws/src/
 RUN ln -s ~/widowx_controller ~/interbotix_ws/src/
+RUN ln -s ~/widowx_controller_interfaces ~/interbotix_ws/src/
 ENV PYTHONPATH="${PYTHONPATH}:/home/${USER_ID}/interbotix_ws/src/widowx_envs"
+ENV PYTHONPATH="${PYTHONPATH}:/home/${USER_ID}/interbotix_ws/src/widowx_controller"
 
 RUN source /opt/ros/humble/setup.bash && \
     cd ~/interbotix_ws && \
     rosdep update && \
     sudo apt update && \
     rosdep install --from-paths src --ignore-src -r -y && \
-    colcon build && \
+    source ~/myenv/bin/activate && \
+    rm -rf build log install && \
+    colcon build --symlink-install && \
     touch ~/.built
 
 RUN sudo ln -s ~/widowx_envs/scripts/go_to_sleep_pose.py /usr/local/bin/go_sleep && \
@@ -94,7 +100,11 @@ RUN echo 'source /opt/ros/humble/setup.bash' >> ~/.bashrc && \
 
 RUN git clone https://github.com/youliangtan/edgeml && \
     cd edgeml && \
+    source ~/myenv/bin/activate && \
     pip3 install -e .
+
+RUN source ~/myenv/bin/activate && pip install "numpy<2" --force-reinstall
+RUN source ~/myenv/bin/activate && pip install --upgrade "coverage>=7.3,<8"
 
 RUN echo 'alias widowx_env_service="python3 ~/widowx_envs/widowx_envs/widowx_env_service.py"' >> ~/.bashrc
 RUN echo "export ROBONETV2_ARM=wx250s" >> ~/.bashrc && source ~/.bashrc

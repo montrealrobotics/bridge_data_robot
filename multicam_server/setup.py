@@ -5,8 +5,7 @@ package_name = 'multicam_server'
 setup(
     name=package_name,
     version='0.0.1',
-    packages=find_packages(where='src'),
-    package_dir={'': 'src'},
+    packages=find_packages(),
     data_files=[
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
@@ -22,7 +21,6 @@ setup(
     maintainer_email='TODO',
     description='Multicam server package for camera streaming',
     license='BSD',
-    tests_require=['pytest'],
     entry_points={
         'console_scripts': [
             'start_streamers = multicam_server.start_streamers:main',

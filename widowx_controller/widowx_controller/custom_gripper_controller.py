@@ -10,11 +10,9 @@ from sensor_msgs.msg import JointState
 import time
 
 from std_msgs.msg import Float64
-from widowx_controller.srv import OpenGripper, OpenGripper_Request, OpenGripper_Response
-from widowx_controller.srv import (
-    GetGripperDesiredState,
-    GetGripperDesiredState_Request,
-    GetGripperDesiredState_Response,
+from widowx_controller_interfaces.srv import OpenGripper
+from widowx_controller_interfaces.srv import (
+    GetGripperDesiredState
 )
 
 try:

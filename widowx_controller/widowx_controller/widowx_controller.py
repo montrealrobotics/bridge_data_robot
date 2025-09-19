@@ -8,6 +8,7 @@ from rclpy.callback_groups import ReentrantCallbackGroup, MutuallyExclusiveCallb
 from pyquaternion import Quaternion
 from sensor_msgs.msg import JointState
 from geometry_msgs.msg import TransformStamped
+from rclpy import ok, init
 
 from threading import Lock
 import logging
@@ -19,7 +20,7 @@ import sys
 import tf2_ros
 from tf_transformations import quaternion_from_matrix
 
-from interbotix_xs_modules.arm import (
+from interbotix_xs_modules.xs_robot.arm import (
     InterbotixArmXSInterface,
     InterbotixArmXSInterface,
     InterbotixRobotXSCore,
@@ -223,6 +224,8 @@ class WidowX_Controller(RobotControllerBase, Node):
         """
         gripper_attached: either "custom" or "default"
         """
+        if not ok():
+            init()
         # Initialize ROS2 node
         Node.__init__(self, "widowx_controller")
 
@@ -578,7 +581,6 @@ class WidowX_Controller(RobotControllerBase, Node):
 
 
 def main():
-    """Main function for running the controller as a standalone node"""
     rclpy.init()
 
     robot_name = "wx250s"
