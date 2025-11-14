@@ -7,6 +7,7 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, EnvironmentVariable
 from launch_ros.actions import PushRosNamespace
 from ament_index_python.packages import get_package_share_directory
+from launch.conditions import IfCondition
 
 
 def generate_launch_description():
@@ -88,6 +89,7 @@ def generate_launch_description():
                 PythonLaunchDescriptionSource(
                     [os.path.join(realsense2_camera_dir, "launch", "rs_launch.py")]
                 ),
+                condition=IfCondition(LaunchConfiguration("realsense")),
                 launch_arguments={
                     "serial_no": LaunchConfiguration("serial_no_camera1"),
                     "camera_name": LaunchConfiguration("tf_prefix_camera1"),

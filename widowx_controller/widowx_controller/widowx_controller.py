@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-
+import threading
 import numpy as np
 import rclpy
 from rclpy.node import Node
@@ -45,14 +45,17 @@ from modern_robotics.core import (
     se3ToVec,
     TransInv,
     FKinSpace,
+    IKinSpace,
+
 )
+
 import widowx_envs.utils.transformation_utils as tr
 
 from widowx_controller.custom_gripper_controller import GripperController
 from widowx_controller.controller_base import RobotControllerBase
 
 import numpy as np
-from numba import jit
+from numba import njit
 
 ##############################################################################
 
@@ -64,66 +67,6 @@ NEUTRAL_JOINT_STATE = np.array(
 DEFAULT_ROTATION = np.array([[0, 0, 1.0], [0, 1.0, 0], [-1.0, 0, 0]])
 
 ##############################################################################
-
-
-@jit()
-def ModifiedIKinSpace(Slist, M, T, thetalist0, eomg, ev, maxiterations=40):
-    """
-    ModifiedIKinSpace - Inverse Kinematics in the Space Frame
-    this exposed the max_iterations parameter to the user
-
-    # original source:
-    https://github.com/NxRLab/ModernRobotics/blob/master/packages/Python/modern_robotics/core.py
-    """
-    thetalist = np.array(thetalist0).copy()
-    i = 0
-    Tsb = FKinSpace(M, Slist, thetalist)
-    Vs = np.dot(Adjoint(Tsb), se3ToVec(MatrixLog6(np.dot(TransInv(Tsb), T))))
-    err = (
-        np.linalg.norm([Vs[0], Vs[1], Vs[2]]) > eomg
-        or np.linalg.norm([Vs[3], Vs[4], Vs[5]]) > ev
-    )
-    while err and i < maxiterations:
-        thetalist = thetalist + np.dot(
-            np.linalg.pinv(JacobianSpace(Slist, thetalist)), Vs
-        )
-        i = i + 1
-        Tsb = FKinSpace(M, Slist, thetalist)
-        Vs = np.dot(Adjoint(Tsb), se3ToVec(MatrixLog6(np.dot(TransInv(Tsb), T))))
-        err = (
-            np.linalg.norm([Vs[0], Vs[1], Vs[2]]) > eomg
-            or np.linalg.norm([Vs[3], Vs[4], Vs[5]]) > ev
-        )
-    if err:
-        print("IKinSpace: did not converge")
-        print("Vs", Vs)
-    return (thetalist, not err)
-
-
-##############################################################################
-
-
-def publish_transform(node, transform, name, parent_name="wx250s/base_link"):
-    """Publish transform using ROS2 tf2 broadcaster"""
-    translation = transform[:3, 3]
-
-    br = tf2_ros.TransformBroadcaster(node)
-    t = TransformStamped()
-
-    t.header.stamp = node.get_clock().now().to_msg()
-    t.header.frame_id = parent_name
-    t.child_frame_id = name
-    t.transform.translation.x = translation[0]
-    t.transform.translation.y = translation[1]
-    t.transform.translation.z = translation[2]
-
-    quat = quaternion_from_matrix(transform)
-    t.transform.rotation.w = quat[0]
-    t.transform.rotation.x = quat[1]
-    t.transform.rotation.y = quat[2]
-    t.transform.rotation.z = quat[3]
-
-    br.sendTransform(t)
 
 
 class ModifiedInterbotixManipulatorXS(object):
@@ -159,56 +102,43 @@ class ModifiedInterbotixArmXSInterface(InterbotixArmXSInterface):
         super(ModifiedInterbotixArmXSInterface, self).__init__(*args, **kwargs)
         self.waist_index = self.group_info.joint_names.index("waist")
 
-    def set_ee_pose_matrix_fast(self, T_sd, custom_guess=None, execute=True):
+    def set_ee_pose_matrix_fast(self, T_sd, guess=None, execute=True):
         """
         this version of set_ee_pose_matrix does not set the velocity profile registers in the servos and therefore runs faster
         """
-        if custom_guess is None:
-            initial_guesses = self.initial_guesses
+        theta_list, success = IKinSpace(self.robot_des.Slist, self.robot_des.M, T_sd, guess, 0.001, 0.001)
+        solution_found = True
+        # Check to make sure a solution was found and that no joint limits were violated
+        if success:
+            #theta_list = [int(elem * 1000) / 1000.0 for elem in theta_list]
+            for x in range(self.group_info.num_joints):
+                if not (
+                    self.group_info.joint_lower_limits[x]
+                    <= theta_list[x]
+                    <= self.group_info.joint_upper_limits[x]
+                ):
+                    solution_found = False
+                    break
         else:
-            initial_guesses = [custom_guess]
+            solution_found = False
+        if solution_found:
+            if execute:
+                self.publish_positions_fast(theta_list)
+                self.T_sb = T_sd
+            return True
+        else:
+            self.core.get_node().get_logger().info("Guess failed to converge...")
 
-        for guess in initial_guesses:
-            theta_list, success = ModifiedIKinSpace(
-                self.robot_des.Slist, self.robot_des.M, T_sd, guess, 0.001, 0.001
-            )
-            solution_found = True
-
-            # Check to make sure a solution was found and that no joint limits were violated
-            if success:
-                theta_list = [int(elem * 1000) / 1000.0 for elem in theta_list]
-                for x in range(self.group_info.num_joints):
-                    if not (
-                        self.group_info.joint_lower_limits[x]
-                        <= theta_list[x]
-                        <= self.group_info.joint_upper_limits[x]
-                    ):
-                        solution_found = False
-                        break
-            else:
-                solution_found = False
-
-            if solution_found:
-                if execute:
-                    self.publish_positions_fast(theta_list)
-                    self.T_sb = T_sd
-                return theta_list, True
-            else:
-                self.core.get_logger().info("Guess failed to converge...")
-
-        self.core.get_logger().info("No valid pose could be found")
-        return theta_list, False
+        self.core.get_node().get_logger().info("No valid pose could be found")
+        return False
 
     def publish_positions_fast(self, positions):
         self.joint_commands = list(positions)
         joint_commands = JointGroupCommand(
-            group_name=self.group_name, cmd=self.joint_commands
+            name=self.group_name, cmd=self.joint_commands
         )
         self.core.pub_group.publish(joint_commands)
-        self.T_sb = FKinSpace(
-            self.robot_des.M, self.robot_des.Slist, self.joint_commands
-        )
-
+        self.T_sb = FKinSpace(self.robot_des.M, self.robot_des.Slist, self.joint_commands)
 
 ##############################################################################
 
@@ -260,10 +190,9 @@ class WidowX_Controller(RobotControllerBase, Node):
         self._init_gripper(gripper_attached, gripper_params)
 
         self._joint_lock = Lock()
-        self._angles, self._velocities, self._effort = {}, {}, {}
-
+        self._angles, self._angles_vel_sorted, self._effort_sorted, self._angles_sorted,  self._velocities, self._effort = {}, {}, {}, {}, {}, {}
         # Create callback group for joint state subscriber
-        self._joint_cb_group = MutuallyExclusiveCallbackGroup()
+        self._joint_cb_group = ReentrantCallbackGroup()
         self._joint_subscription = self.create_subscription(
             JointState,
             f"/{robot_name}/joint_states",
@@ -274,6 +203,8 @@ class WidowX_Controller(RobotControllerBase, Node):
 
         time.sleep(1)
         self._n_errors = 0
+        self.pose = None
+        self.pose_matrix = None
 
         self._upper_joint_limits = np.array(self.bot.arm.group_info.joint_upper_limits)
         self._lower_joint_limits = np.array(self.bot.arm.group_info.joint_lower_limits)
@@ -291,6 +222,29 @@ class WidowX_Controller(RobotControllerBase, Node):
         """Handle shutdown signals"""
         self.get_logger().info("Received shutdown signal, cleaning up...")
         self.clean_shutdown()
+
+    def publish_transform(self, transform, name, parent_name="wx250s/base_link"):
+        """Publish transform using ROS2 tf2 broadcaster"""
+        translation = transform[:3, 3]
+
+        br = tf2_ros.TransformBroadcaster(self)
+        t = TransformStamped()
+
+        t.header.stamp = self.get_clock().now().to_msg()
+        t.header.frame_id = parent_name
+        t.child_frame_id = name
+        t.transform.translation.x = translation[0]
+        t.transform.translation.y = translation[1]
+        t.transform.translation.z = translation[2]
+
+        quat = quaternion_from_matrix(transform)
+        t.transform.rotation.w = quat[0]
+        t.transform.rotation.x = quat[1]
+        t.transform.rotation.y = quat[2]
+        t.transform.rotation.z = quat[3]
+
+        br.sendTransform(t)
+
 
     def reboot_motor(self, joint_name: str):
         """Experimental function to reboot the motor
@@ -356,8 +310,8 @@ class WidowX_Controller(RobotControllerBase, Node):
         try:
             if step and not blocking:
                 # this is a call from the `step` function so we use a custom faster way to set the ee pose
-                solution, success = self.bot.arm.set_ee_pose_matrix_fast(
-                    target_pose, custom_guess=self.get_joint_angles(), execute=True
+                success = self.bot.arm.set_ee_pose_matrix_fast(
+                    target_pose, guess=self.get_joint_angles(), execute=True
                 )
             else:
                 if not step:  # we want to move fast when it is step() call
@@ -369,8 +323,6 @@ class WidowX_Controller(RobotControllerBase, Node):
                     accel_time=duration * 0.45,
                     blocking=blocking,
                 )
-
-            self.des_joint_angles = solution
 
             if not success:
                 self.get_logger().warn("no IK solution found, do nothing")
@@ -423,7 +375,7 @@ class WidowX_Controller(RobotControllerBase, Node):
             "group", "all", "Hardware_Error_Status"
         )
 
-        if len(status_codes.values) < 7:
+        if len(status_codes) < 7:
             self.get_logger().warn("Some motor went wrong!")
             self.bot.dxl.robot_reboot_motors(
                 "group", "all", enable=True, smart_reboot=True
@@ -434,6 +386,7 @@ class WidowX_Controller(RobotControllerBase, Node):
 
     def move_to_neutral(self, duration=4):
         self.get_logger().info("moving to neutral..")
+        self.set_moving_time(4.0)
         try:
             self.bot.arm.set_joint_positions(
                 self.neutral_joint_angles, moving_time=duration
@@ -445,6 +398,7 @@ class WidowX_Controller(RobotControllerBase, Node):
             ):
                 self.get_logger().warn("moving to neutral failed!")
                 self.check_motor_status_and_reboot()
+
         except Exception as e:
             self.get_logger().error(f"stuck during reset: {e}")
 
@@ -456,53 +410,42 @@ class WidowX_Controller(RobotControllerBase, Node):
                 self._angles[name] = position
                 self._velocities[name] = velocity
                 self._effort[name] = effort
+            self._angles_sorted = np.array([self._angles[k] for k in self.joint_names])
+            self._angles_vel_sorted = np.array([self._velocities[k] for k in self.joint_names])
+            self._effort_sorted = np.array([self._effort[k] for k in self.joint_names])
+            self.pose_matrix, self.pose = self.get_cartesian_pose()
 
     def get_joint_angles(self):
         """
         Returns current joint angles
         """
-        with self._joint_lock:
-            try:
-                return np.array([self._angles[k] for k in self.joint_names])
-            except KeyError:
-                return None
+        return self._angles_sorted
 
     def get_joint_effort(self):
         """
         Returns current joint effort
         """
-        with self._joint_lock:
-            try:
-                return np.array([self._effort[k] for k in self.joint_names])
-            except KeyError:
-                return None
+        return self._effort_sorted
 
     def get_joint_angles_velocity(self):
         """
         Returns velocities for joints
         """
-        with self._joint_lock:
-            try:
-                return np.array([self._velocities[k] for k in self.joint_names])
-            except KeyError:
-                return None
+        return self._angles_vel_sorted
 
-    def get_cartesian_pose(self, matrix=False):
+    def get_cartesian_pose(self):
         """Returns cartesian end-effector pose"""
         joint_positions = list(
             self.bot.dxl.joint_states.position[
                 self.bot.arm.waist_index : (self._qn + self.bot.arm.waist_index)
             ]
         )
-        pose = FKinSpace(
-            self.bot.arm.robot_des.M, self.bot.arm.robot_des.Slist, joint_positions
-        )
-        if matrix:
-            return pose
-        else:
-            return np.concatenate(
+        pose = FKinSpace(self.bot.arm.robot_des.M, self.bot.arm.robot_des.Slist, joint_positions)
+
+        non_matrix = np.concatenate(
                 [pose[:3, -1], np.array(Quaternion(matrix=pose[:3, :3]).elements)]
             )
+        return pose, non_matrix
 
     def _init_gripper(self, gripper_attached, gripper_params):
         if gripper_attached == "custom":

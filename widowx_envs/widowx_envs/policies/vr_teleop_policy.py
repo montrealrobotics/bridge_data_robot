@@ -4,12 +4,10 @@ from widowx_envs.policies.policy import Policy
 from widowx_envs.utils.utils import AttrDict
 from widowx_envs.control_loops import Environment_Exception
 import widowx_envs.utils.transformation_utils as tr
-
 import numpy as np
 import time
 
 from pyquaternion import Quaternion
-from widowx_controller.widowx_controller import publish_transform
 
 ##############################################################################
 
@@ -26,7 +24,6 @@ class VRTeleopPolicy(Policy):
         self.reader = self.env.oculus_reader
         # self.prev_vr_transform = None
         self.action_space = self.env._hp.action_mode
-
         self.prev_handle_press = False
         self.reference_vr_transform = None
         self.reference_robot_transform = None
@@ -87,10 +84,10 @@ class VRTeleopPolicy(Policy):
         current_vr_transform = self.oculus_to_robot(current_vr_transform)
         current_vr_transform = tr.TransInv(self.initial_vr_offset).dot(current_vr_transform)  ##
 
-        publish_transform(current_vr_transform, 'currentvr_robotsystem')
+        self.env._controller.publish_transform(current_vr_transform, 'currentvr_robotsystem')
         delta_vr_transform = current_vr_transform.dot(tr.TransInv(self.reference_vr_transform))
 
-        publish_transform(self.reference_robot_transform, 'reference_robot_transform')
+        self.env._controller.publish_transform(self.reference_robot_transform, 'reference_robot_transform')
         M_rob, p_rob = tr.TransToRp(self.reference_robot_transform)
         M_delta, p_delta = tr.TransToRp(delta_vr_transform)
         new_robot_transform = tr.RpToTrans(M_delta.dot(M_rob), p_rob + p_delta)
@@ -99,15 +96,15 @@ class VRTeleopPolicy(Policy):
             new_robot_transform = self.zero_out_pitchroll(new_robot_transform)
         if self.action_space == '3trans':
             new_robot_transform = self.zero_out_yawpitchroll(new_robot_transform)
-        publish_transform(new_robot_transform, 'des_robot_transform')
+        self.env._controller.publish_transform(new_robot_transform, 'des_robot_transform')
 
         prev_target_pos, _ = self.env.get_target_state()
         delta_robot_transform = new_robot_transform.dot(tr.TransInv(prev_target_pos))
-        publish_transform(delta_robot_transform, 'delta_robot_transform')
+        self.env._controller.publish_transform(delta_robot_transform, 'delta_robot_transform')
         self.prev_commanded_transform = new_robot_transform
 
         des_gripper_position = (1 - trigger_continuous)
-        actions = tr.transform2action_local(delta_robot_transform, des_gripper_position, self.env._controller.get_cartesian_pose()[:3])
+        actions = tr.transform2action_local(delta_robot_transform, des_gripper_position, self.env._controller.pose[:3])
 
         if self.env._hp.action_mode == '3trans1rot':
             actions = np.concatenate([actions[:3], np.array([actions[5]]), np.array([des_gripper_position])])  # only use the yaw rotation

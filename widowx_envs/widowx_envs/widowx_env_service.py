@@ -1,19 +1,44 @@
 #! /usr/bin/python3
 # This is the highest level interface to interact with the widowx setup.
-
+from copy import deepcopy
 import time
+import json
+from dataclasses import asdict
 import cv2
 import argparse
 import numpy as np
 import logging
 import traceback
-
+import threading
 from typing import Optional
 from widowx_envs.utils.exceptions import Environment_Exception
-
+from edgeml.zmq_wrapper.req_rep import ReqRepClient 
 # install from: https://github.com/youliangtan/edgeml
 from edgeml.action import ActionClient, ActionServer, ActionConfig
 from edgeml.internal.utils import mat_to_jpeg, jpeg_to_mat, compute_hash
+import edgeml.action
+
+edgeml.action._DEFAULT_TIMEOUT = 15.0
+
+class ExtendedActionClient(ActionClient):
+    """Drop-in ActionClient with custom ReqRepClient timeout."""
+
+    def __init__(self, server_ip, config, timeout_ms=8000):
+        self.client = ReqRepClient(server_ip, config.port_number, timeout_ms=timeout_ms)
+
+        res = self.client.send_msg({"type": "hash"})
+        if res is None:
+            raise Exception("Failed to connect to action server")
+
+        config_json = json.dumps(asdict(config), separators=(",", ":"))
+        if compute_hash(config_json) != compute_hash(res["payload"]):
+            raise Exception("Incompatible config hash with server")
+
+        config.observation_keys = set(config.observation_keys)
+        config.action_keys = set(config.action_keys)
+        self.config = config
+        self.server_ip = server_ip
+        self.broadcast_client = None
 
 
 class WidowXConfigs:
@@ -71,7 +96,7 @@ class WidowXActionServer:
             edgeml_config,
             obs_callback=self.__observe,
             act_callback=self.__action,
-            log_level=logging.WARNING,
+            log_level=logging.DEBUG,
         )
 
         self._env_params = {}
@@ -103,8 +128,8 @@ class WidowXActionServer:
 
         from widowx_envs.widowx_env import BridgeDataRailRLPrivateWidowX
         from multicam_server.topic_utils import IMTopic
-        from tf.transformations import quaternion_from_euler
-        from tf.transformations import quaternion_matrix
+        from tf_transformations import quaternion_from_euler
+        from tf_transformations import quaternion_matrix
 
         _env_params = env_params.copy()
         cam_imtopic = []
@@ -133,6 +158,29 @@ class WidowXActionServer:
         self.init_robot(self._env_params, self._image_size)
 
     def __action(self, type: str, req_payload: dict) -> dict:
+        print(f"Received action type: {type}, payload: {req_payload}")
+        try:
+            if type not in self._action_methods:
+                print("Unknown action type:", type)
+                return {"status": WidowXStatus.EXECUTION_FAILURE}
+
+            if type != "init" and self.bridge_env is None:
+                print_red("WARNING: env not initialized.")
+                return {"status": WidowXStatus.NOT_INITIALIZED}
+
+            fn = self._action_methods[type]
+            print(f"Calling action method: {fn.__name__}")
+            status = fn(req_payload)
+            print(f"Action method returned status: {status}")
+            return {"status": status}
+
+        except Exception as e:
+            import traceback
+            print("Action exception:", e)
+            traceback.print_exc()
+            return {"status": WidowXStatus.EXECUTION_FAILURE}
+
+    def __action2(self, type: str, req_payload: dict) -> dict:
         if type not in self._action_methods:
             return {"status": WidowXStatus.EXECUTION_FAILURE}
         if type != "init" and self.bridge_env is None:
@@ -239,10 +287,13 @@ class WidowXClient:
             :param port: the port number
         """
         edgeml_config = WidowXConfigs.DefaultActionConfig
+        cfg = deepcopy(WidowXConfigs.DefaultActionConfig)
         edgeml_config.port_number = port
         edgeml_config.broadcast_port = port + 1
-        self.__client = ActionClient(host, edgeml_config)
+        self.__client = ExtendedActionClient(host, edgeml_config)
+        self._lock = threading.Lock()
         print("Initialized widowx client.")
+        time.sleep(1)
 
     def init(
         self,
@@ -255,14 +306,18 @@ class WidowXClient:
             :param image_size: the size of the image to return
         """
         payload = {"env_params": env_params, "image_size": image_size}
-        res = self.__client.act("init", payload)
+        res = self.safe_act("init", payload)
         return WidowXStatus.NO_CONNECTION if res is None else res["status"]
+
+    def safe_act(self, key, payload):
+        with self._lock:
+            return self.__client.act(key, payload)
 
     def move(
         self,
         pose: np.ndarray,
         duration: float = 1.0,
-        blocking: bool = False,
+        blocking: bool = True,
     ) -> WidowXStatus:
         """
         Command the arm to move to a given pose in space.
@@ -273,12 +328,12 @@ class WidowXClient:
         """
         assert len(pose) == 6 or pose.shape == (4, 4), "invalid pose shape"
         _payload = {"pose": pose, "duration": duration, "blocking": blocking}
-        res = self.__client.act("move", _payload)
+        res = self.safe_act("move", _payload)
         return WidowXStatus.NO_CONNECTION if res is None else res["status"]
 
     def move_gripper(self, state: float) -> WidowXStatus:
         """Open or close the gripper. 1.0 is open, 0.0 is closed."""
-        res = self.__client.act("gripper", {"open": state})
+        res = self.safe_act("gripper", {"open": state})
         return WidowXStatus.NO_CONNECTION if res is None else res["status"]
 
     def step_action(self, action: np.ndarray, blocking=False) -> WidowXStatus:
@@ -287,12 +342,12 @@ class WidowXClient:
         Note that the action is in relative space.
         """
         assert len(action) in [5, 7], "invalid action shape"
-        res = self.__client.act("step_action", {"action": action, "blocking": blocking})
+        res = self.safe_act("step_action", {"action": action, "blocking": blocking})
         return WidowXStatus.NO_CONNECTION if res is None else res["status"]
 
     def reset(self) -> WidowXStatus:
         """Reset the arm to the neutral position."""
-        res = self.__client.act("reset", {})
+        res = self.safe_act("reset", {})
         return WidowXStatus.NO_CONNECTION if res is None else res["status"]
 
     def get_observation(self) -> Optional[dict]:
@@ -317,7 +372,7 @@ class WidowXClient:
             - waist, shoulder, elbow, forearm_roll,
             - wrist_angle, wrist_rotate, gripper, left_finger, right_finger
         """
-        self.__client.act("reboot_motor", {"joint_name": joint_name})
+        self.safe_act("reboot_motor", {"joint_name": joint_name})
 
 
 
@@ -373,10 +428,11 @@ def main():
 
         obs = None
         while obs is None:
+            print("sending gripper command")
+            res = widowx_client.move_gripper(0.0)
+            print("sending obs request")
             obs = widowx_client.get_observation()
-            time.sleep(1)
             print("Waiting for robot to be ready...")
-
         # Coordinate Convention:
         #  - x: forward
         #  - y: left

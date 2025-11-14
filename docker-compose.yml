@@ -1,4 +1,3 @@
-version: "3.9"
 services:
   robonet:
     image: robonet-base
@@ -12,7 +11,9 @@ services:
       - DATA=/home/robonet/trainingdata
       - EXP=/home/robonet/experiments
       - REALSENSE_SERIAL=_238722070138
-    user: robonet:1002
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=all
+    user: robonet:46
     stdin_open: true
     tty: true
     device_cgroup_rules:
@@ -21,6 +22,7 @@ services:
     runtime: nvidia
     volumes:
       - ${USB_CONNECTOR_CHART:-/dev/null}:/tmp/camera_connector_chart
+      - /etc/localtime:/etc/localtime:ro
       # if you want to be able to edit widowx_envs code without rebuilding the image, this
       # overwrites the widowx_envs directory that was copied in at build time
       - ./widowx_envs/experiments:/home/robonet/experiment

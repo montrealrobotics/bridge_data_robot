@@ -1,9 +1,11 @@
 #! /usr/bin/python3
 
+import os
 from widowx_envs.control_loops import Environment_Exception
 import time
 from widowx_envs.base.base_env import BaseEnv
 from widowx_envs.utils import transformation_utils as tr
+from interbotix_common_modules.common_robot import InterbotixRobotNode
 import numpy as np
 from widowx_envs.utils.exceptions import Image_Exception
 import copy
@@ -11,7 +13,8 @@ from widowx_envs.utils import AttrDict
 from rclpy.executors import MultiThreadedExecutor
 import rclpy
 from threading import Thread
-
+import threading
+from rclpy.time import Time
 from multicam_server.topic_utils import IMTopic
 from multicam_server.camera_recorder import CameraRecorder
 from widowx_controller.widowx_controller import WidowX_Controller
@@ -39,8 +42,9 @@ class RobotBaseEnv(BaseEnv):
         logging.info('initializing environment for {}'.format(self._hp.robot_name))
         self._robot_name = self._hp.robot_name
         self._setup_robot()
-
         self._obs_tol = self._hp.OFFSET_TOL
+        if not rclpy.ok():
+            rclpy.init(args=None)
 
         assert (self._hp.gripper_attached == 'default' and not self._hp.continuous_gripper) or self._hp.gripper_attached != 'default', 'If gripper_attached == \'default\', continuous_gripper has to be False'
         self._controller = self._hp.robot_controller(
@@ -50,9 +54,7 @@ class RobotBaseEnv(BaseEnv):
             gripper_params=self._hp.gripper_params,
             normal_base_angle=self._hp.workspace_rotation_angle_z)
 
-        if not rclpy.ok():
-            rclpy.init(args=None)
-        self._executor = MultiThreadedExecutor()
+        self._executor = MultiThreadedExecutor(num_threads=12)
         self._executor.add_node(self._controller)
 
         if hasattr(self._controller, "interbotix_node"):
@@ -61,17 +63,17 @@ class RobotBaseEnv(BaseEnv):
         self._spin_thread = Thread(target=self._executor.spin, daemon=True)
         self._spin_thread.start()
 
-        logging.getLogger('robot_logger').info('---------------------------------------------------------------------------')
-        for name, value in self._hp.items():
-            logging.getLogger('robot_logger').info('{}= {}'.format(name, value))
-        logging.getLogger('robot_logger').info('---------------------------------------------------------------------------')
-
-        self._cameras = [CameraRecorder(t, False, False) for t in self._hp.camera_topics]
+        logging.getLogger('robot_logger')
+        logging.getLogger('robot_logger').setLevel(logging.INFO)
+        self._cameras = [CameraRecorder(t, f"camera_{i}", False, False) for i, t in enumerate(self._hp.camera_topics)]
+        for cam in self._cameras:
+            self._executor.add_node(cam)
         self._camera_info = [c.camera_info for c in self._cameras]
 
         if "depth_camera_topics" in self._hp:
-            print("depth camera topics", self._hp.depth_camera_topics)
-            self._depth_cameras = [CameraRecorder(t, False, False) for t in self._hp.depth_camera_topics]
+            self._depth_cameras = [CameraRecorder(t, f"depth_camera_{i}", False, False) for i, t in enumerate(self._hp.depth_camera_topics)]
+            for cam in self._depth_cameras:
+                self._executor.add_node(cam)
             self._depth_camera_info = [c.camera_info for c in self._depth_cameras]
         else:
             self._depth_cameras = []
@@ -101,7 +103,7 @@ class RobotBaseEnv(BaseEnv):
         self.action_space = spaces.Box(
             np.asarray([-0.05, -0.05, -0.05, -0.25, -0.25, -0.25, 0.]),
             np.asarray([0.05, 0.05, 0.05, 0.25, 0.25, 0.25, 1.0]),
-            dtype=np.float32)
+            dtype=np.float64)
         if self._hp.action_mode == '3trans':
             self._adim = self._base_adim = 4
             self._sdim = self._base_sdim = 4
@@ -118,7 +120,7 @@ class RobotBaseEnv(BaseEnv):
         else:
             raise NotImplementedError('action mode {} not supported!'.format(self._hp.action_mode))
 
-        self.time_for_get_obs = 0.08  # measured empirically, might need to be adjusted.
+        self.time_for_get_obs = 0.01  # measured empirically, might need to be adjusted.
 
     def controller(self):
         """Public method to access the controller"""
@@ -191,7 +193,7 @@ class RobotBaseEnv(BaseEnv):
 
     def _next_qpos(self, action):
         prev_transform, prev_gripperstate = self.get_target_state()
-        delta_transform, grasp_action = tr.action2transform_local(action, self._controller.get_cartesian_pose()[:3])
+        delta_transform, grasp_action = tr.action2transform_local(action, self._controller.pose[:3])
         next_transform = delta_transform.dot(prev_transform)
         if self._hp.absolute_grasp_action:
             new_gripperstate = np.array(grasp_action)[None]
@@ -224,6 +226,8 @@ class RobotBaseEnv(BaseEnv):
                   -keys corresponding to numpy arrays should have constant shape every timestep (for caching)
                   -images should be placed in the 'images' key in a (ncam, ...) array
         """
+        
+        t0 = time.time()
         assert action.shape[0] == self._base_adim, "Action should have shape ({},) but has shape {}".format(self._base_adim, action.shape)
         action = np.clip(action, self.action_space.low, self.action_space.high)
         if self._hp.action_mode == '3trans1rot':
@@ -232,7 +236,6 @@ class RobotBaseEnv(BaseEnv):
             action = np.concatenate([action[:3], np.zeros(3), np.array([action[-1]])])  # insert zeros for pitch, roll, yaw
 
         new_transform, new_gripperstate = self._next_qpos(action)
-
         # assume that the gripper open state is 1. and the close state is 0.
 
         if self._hp.continuous_gripper:
@@ -243,11 +246,9 @@ class RobotBaseEnv(BaseEnv):
                 self._controller.close_gripper()
             else:
                 self._controller.open_gripper()
-
-        t0 = time.time()
         self._controller.publish_transform(new_transform, 'commanded_transform')
-
         self.move_except = False
+        t1 = time.time()
         if self._hp.catch_environment_except:
             try:
                 self._controller.move_to_eep(new_transform, duration=self._hp.move_duration, blocking=blocking)
@@ -255,10 +256,8 @@ class RobotBaseEnv(BaseEnv):
                 self.move_except = True
         else:
             self._controller.move_to_eep(new_transform, duration=self._hp.move_duration, blocking=blocking)
-
-        if self._hp.wait_until_gripper_pose_reached:
-            self._controller.wait_until_gripper_position_reached()
-        logging.getLogger('robot_logger').info('time to set pos'.format(time.time() - t0))
+        #if self._hp.wait_until_gripper_pose_reached:
+            #self._controller.wait_until_gripper_position_reached()
 
         self._previous_target_qpos = tr.transform2state(new_transform, new_gripperstate, self._controller.default_rot)
         if self._hp.resetqpos_after_every_step:
@@ -268,9 +267,9 @@ class RobotBaseEnv(BaseEnv):
         if tstamp_return_obs is None:
             return self.current_obs() # or None?
 
-        if self._hp.adaptive_wait:
-            t1 = time.time()
-            self.adaptive_wait(tstamp_return_obs - self.time_for_get_obs * 1.1)
+        #if self._hp.adaptive_wait:
+        #    t1 = time.time()
+        #    self.adaptive_wait(tstamp_return_obs - self.time_for_get_obs * 1.1)
             # print('adaptive wait for ', time.time() - t1)
         obs = self.current_obs()
         return obs
@@ -284,19 +283,18 @@ class RobotBaseEnv(BaseEnv):
             time.sleep(0.001)
 
     def get_full_state(self):
-        eep = self._controller.get_cartesian_pose(matrix=True)
+        eep = self._controller.pose_matrix
         return tr.transform2state(eep, self._controller.get_gripper_position(), self._controller.default_rot)
 
     def current_obs(self):
         obs = {}
         t0 = time.time()
-        j_angles, j_vel, eep = self._controller.get_state()
+        j_angles, j_vel, pose = self._controller.get_state()
         obs['joint_effort'] = self._controller.get_joint_effort()
 
         obs['qpos'] = j_angles
         if j_vel is not None:
             obs['qvel'] = j_vel
-
         full_state = self.get_full_state()
         obs['full_state'] = full_state
         if self._hp.action_mode == '3trans3rot':
@@ -312,14 +310,13 @@ class RobotBaseEnv(BaseEnv):
                 raise Environment_Exception
             obs['state'] = np.concatenate([full_state[:3], full_state[5:]])  # remove roll and pitch since they are (close to) zero
         obs['desired_state'] = self._previous_target_qpos
-        obs['time_stamp'] = self._controller.get_clock().now()
-        obs['eef_transform'] = self._controller.get_cartesian_pose(matrix=True)
+        now = self._controller.get_clock().now()
+        obs['time_stamp'] = now.nanoseconds / 1e9
+        obs['eef_transform'] = self._controller.pose_matrix
         self._last_obs = copy.deepcopy(obs)
-        
         obs['images'] = self.render()
         if self._depth_cameras:
             obs['depth_images'] = self.depth_render()
-        logging.getLogger('robot_logger').info('time for rendering {}'.format(time.time() - t0))
 
         obs['high_bound'], obs['low_bound'] = copy.deepcopy(self._high_bound), copy.deepcopy(self._low_bound)
 
@@ -344,7 +341,7 @@ class RobotBaseEnv(BaseEnv):
         obs = self.current_obs()
         return obs
 
-    def move_to_neutral(self, duration=2.):
+    def move_to_neutral(self, duration=4.0):
         self._controller.move_to_neutral(duration)
         self._reset_previous_qpos()
 
@@ -422,8 +419,10 @@ class RobotBaseEnv(BaseEnv):
         cur_time = self._controller.get_clock().now()
         for recorder in cameras:
             stamp, image = recorder.get_image()
-            time_diff = (cur_time - stamp).to_sec()
-            logging.getLogger('robot_logger').info("Current-Camera time difference {}".format(time_diff))
+            stamp_ros = Time.from_msg(stamp)
+            dt = (cur_time - stamp_ros)
+            time_diff = dt.nanoseconds / 1e9
+            logging.getLogger('robot_logger').debug("Current-Camera time difference {}".format(time_diff))
 
             if abs(time_diff) > 10 * self._obs_tol:    # no camera ping in half second => camera failure
                 logging.getLogger('robot_logger').error("DeSYNC - no ping in more than {} seconds!".format(10 * self._obs_tol))

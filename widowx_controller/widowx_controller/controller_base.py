@@ -104,7 +104,7 @@ class RobotControllerBase(ABC):
         """Get a tuple of (joint_angles, joint_angles_velocity, cartesian_pose)"""
         return self.get_joint_angles(), \
             self.get_joint_angles_velocity(), \
-            self.get_cartesian_pose()
+            self.pose
 
     @abstractmethod
     def open_gripper(self, wait=False):

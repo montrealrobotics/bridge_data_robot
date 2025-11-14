@@ -3,7 +3,7 @@
 ROBONETV2_ARM=wx250s && $(dirname "$0")/setup.sh || exit 1
 
 python_node_string='python_node:=false'
-camera_string='realsense:=true'
+camera_string='realsense:=false'
 
 source /opt/ros/humble/setup.bash
 source ~/interbotix_ws/install/setup.bash
@@ -14,4 +14,4 @@ source ~/myenv/bin/activate
 exec ros2 launch widowx_controller widowx_rs.launch.py \
     ${video_stream_provider_string} camera_connector_chart:=/tmp/camera_connector_chart \
     serial_no_camera1:=${REALSENSE_SERIAL} \
-    python_node:=false realsense:=true
+    python_node:=false realsense:=false

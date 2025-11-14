@@ -2,7 +2,7 @@
 
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
-from launch.substitutions import LaunchConfiguration
+from launch.substitutions import LaunchConfiguration, PythonExpression
 from launch_ros.actions import Node
 from launch.conditions import IfCondition, UnlessCondition
 
@@ -67,6 +67,18 @@ def generate_launch_description():
         default_value='0',
         description='Device 0 parameter'
     )
+    image_topic = PythonExpression([
+        '"',
+        LaunchConfiguration("camera_name"),
+        '"',
+        ' + "/image_raw"'
+    ])
+    image_info_topic = PythonExpression([
+        '"',
+        LaunchConfiguration("camera_name"),
+        '"',
+        ' + "/camera_info"'
+    ])
 
     python_node = Node(
         condition=IfCondition(LaunchConfiguration('python_node')),
@@ -89,14 +101,14 @@ def generate_launch_description():
             package='image_publisher', executable='image_publisher_node', output='screen',
             arguments=[LaunchConfiguration('device_0')],
             parameters=[{'use_sim_time': LaunchConfiguration('use_sim_time')}],
-            remappings=[('image_raw', '/camera/image_raw'),
-                        ('camera_info', '/camera/camera_info')
+            remappings=[('image_raw', image_topic),
+                        ('camera_info', image_info_topic)
                         ]
     )
 
     return LaunchDescription([
-        python_node,
-        non_python_node_launch,
+        device_0_arg,
+        sim_time_arg,
         video_stream_provider_arg,
         fps_arg,
         frame_id_arg,
@@ -105,6 +117,6 @@ def generate_launch_description():
         camera_name_arg,
         node_name_arg,
         python_node_arg,
-        sim_time_arg,
-        device_0_arg
+        python_node,
+        non_python_node_launch,
     ])

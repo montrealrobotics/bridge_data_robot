@@ -62,8 +62,8 @@ class CameraRecorder(Node):
     TRACK_SKIP = 2        # the camera publisher works at 60 FPS but camera itself only goes at 30
     MAX_REPEATS = 100      # camera errors after 10 repeated frames in a row
 
-    def __init__(self, image_topic, opencv_tracking=False, save_videos=False):
-        super().__init__('camera_recorder')
+    def __init__(self, image_topic, name='camera_recorder', opencv_tracking=False, save_videos=False):
+        super().__init__(name)
 
         topic_data = image_topic
         opencv_tracking = opencv_tracking
@@ -100,7 +100,7 @@ class CameraRecorder(Node):
         print("Successfully read camera info")
 
         self.create_subscription(Image_msg, topic_data.name, self.store_latest_im, 1)
-
+        rclpy.spin_once(self, timeout_sec=5.0)
         logger = self.get_logger()
         logger.debug(f'Downing sema on topic: {topic_data.name}')
         success = self._status_sem.acquire(timeout=5)
@@ -159,11 +159,11 @@ class CameraRecorder(Node):
     def get_image(self, arg=None):
         self._latest_image.mutex.acquire()
         time_stamp, img_cv2 = self._latest_image.tstamp_img, self._latest_image.img_cv2
-        current_hash = hashlib.sha256(img_cv2.tobytes()).hexdigest()
-        if self._last_hash_get_image is not None:
-            if current_hash == self._last_hash_get_image:
-                print('Repeated images for get_image method!')
-        self._last_hash_get_image = current_hash
+        #current_hash = hashlib.sha256(img_cv2.tobytes()).hexdigest()
+        #if self._last_hash_get_image is not None:
+        #    if current_hash == self._last_hash_get_image:
+        #        print('Repeated images for get_image method!')
+        #self._last_hash_get_image = current_hash
         self._latest_image.mutex.release()
         return time_stamp, img_cv2
 

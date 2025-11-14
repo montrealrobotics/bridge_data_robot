@@ -51,6 +51,7 @@ RUN git lfs install
 
 RUN adduser --disabled-password --gecos '' ${USER_ID} && \
     adduser ${USER_ID} sudo && \
+    adduser ${USER_ID} plugdev && \
     echo '%sudo ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers
 
 USER ${USER_ID}
@@ -102,6 +103,10 @@ RUN git clone https://github.com/youliangtan/edgeml && \
     cd edgeml && \
     source ~/myenv/bin/activate && \
     pip3 install -e .
+
+USER root
+RUN apt-get update -y && apt-get install -y \
+    x11-apps
 
 RUN source ~/myenv/bin/activate && pip install "numpy<2" --force-reinstall
 RUN source ~/myenv/bin/activate && pip install --upgrade "coverage>=7.3,<8"

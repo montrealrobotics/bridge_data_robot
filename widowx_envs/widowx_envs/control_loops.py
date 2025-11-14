@@ -8,9 +8,8 @@ import os
 from widowx_envs.utils.image_utils import npy_to_gif, npy_to_mp4, resize_store
 import cv2
 from widowx_envs.utils.utils import Configurable, AttrDict, get_policy_args
-
-
 from widowx_envs.utils.exceptions import Environment_Exception, Bad_Traj_Exception, Image_Exception
+import logging
 
 
 class BlockingLoop(Configurable):
@@ -20,9 +19,9 @@ class BlockingLoop(Configurable):
     """
 
     def __init__(self, hyperparams):
+        self.logger = logging.getLogger(__name__)
         self._hp = self._default_hparams()
         self._override_defaults(hyperparams)
-
         self.T = self._hp.T
         self._goal = None
         self._goal_seq = None
@@ -108,7 +107,7 @@ class BlockingLoop(Configurable):
         if not traj_ok:
             raise Bad_Traj_Exception
 
-        print('needed {} trials'.format(i_trial))
+        self.logger.info('needed {} trials'.format(i_trial))
 
         if self._hp.make_final_gif or self._hp.make_final_gif_pointoverlay:
             if i_traj % self._hp.make_final_gif_freq == 0:
@@ -183,7 +182,6 @@ class BlockingLoop(Configurable):
             else:
                 self._agent_cache[k].append(env_obs[k])
 
-            # print('storing at', t)
             obs[k] = self._agent_cache[k][:self._cache_cntr]
 
         if 'obj_image_locations' in env_obs:
@@ -229,7 +227,6 @@ class BlockingLoop(Configurable):
 
         agent_data, policy_outputs = {}, []
 
-        # Take the sample.
         done = False
         initial_env_obs = self.reset_env(i_traj)
         obs = self._post_process_obs(initial_env_obs, agent_data, True)
@@ -265,7 +262,6 @@ class BlockingLoop(Configurable):
                 print(e)
                 return {'traj_ok': False}, None, None
 
-            # print('tstep', t)
             if (self._hp.T - 1) == self._cache_cntr or obs['env_done'][-1]:   # environements can include the tag 'env_done' in the observations to signal that time is over
                 done = True
         self.env.finish()
@@ -274,7 +270,7 @@ class BlockingLoop(Configurable):
         if self._hp.rejection_sample:
             assert self.env.has_goal(), 'Rejection sampling enabled but env has no goal'
             traj_ok = self.env.goal_reached()
-            print('goal_reached', traj_ok)
+            self.logger.info('goal_reached', traj_ok)
 
         if self._hp.ask_traj_ok:
             traj_ok = self.get_input()
@@ -297,7 +293,7 @@ class BlockingLoop(Configurable):
             elif str == 'n':
                 traj_okay = False
             else:
-                print('key invalid!')
+                self.logger.error('key invalid!')
                 valid = False
         return traj_okay
 
@@ -358,7 +354,7 @@ class BlockingLoop(Configurable):
 
     def cleanup(self):
         if self._hp.use_save_thread:
-            print('Cleaning up file saver....')
+            self.logger.info('Cleaning up file saver....')
             self._save_worker.put(None)
             self._save_worker.join()
 
@@ -398,7 +394,6 @@ class TimedLoop(BlockingLoop):
 
         agent_data, policy_outputs = {}, []
 
-        # Take the sample.
         done = False
         policy.reset()
         initial_env_obs = self.reset_env(i_traj)
@@ -425,19 +420,15 @@ class TimedLoop(BlockingLoop):
             Environment steps given action and returns an observation
             """
             if time.time() > last_tstep + step_duration:
-                # print('actual delta t', time.time() - last_tstep)
+                self.logger.debug('actual delta t', time.time() - last_tstep)
                 if (time.time() - last_tstep) > step_duration*1.05:
-                    print('###########################')
-                    print('Warning, loop takes too long: {}s!!!'.format(time.time() - last_tstep))
-                    print('###########################')
-                print('loop  {}s'.format(time.time() - last_tstep))
+                    self.logger.warning('Warning, loop takes too long: {}s!!!'.format(time.time() - last_tstep))
+
+                self.logger.debug('loop  {}s'.format(time.time() - last_tstep))
                 last_tstep = time.time()
 
-
-
-                print('tstep', self._cache_cntr - 1)
+                self.logger.debug('tstep', self._cache_cntr - 1)
                 pi_t = policy.act(**get_policy_args(policy, obs, self._cache_cntr - 1, i_traj, agent_data))
-
                 if 'done' in pi_t:
                     done = pi_t['done']
                 try:
@@ -445,22 +436,20 @@ class TimedLoop(BlockingLoop):
                     obs = self.env.step(pi_t['actions'], tstamp_return_obs, blocking=False)
                     obs = self._post_process_obs(obs, agent_data)
                 except Environment_Exception as e:
-                    print(e)
+                    self.logger.error(e)
                     return {'traj_ok': False}, None, None
 
                 policy_outputs.append(pi_t)
 
-                # import ipdb; ipdb.set_trace()
-                if (self._hp.T - 1) == self._cache_cntr or obs['env_done'][-1]:   # environements can include the tag 'env_done' in the observations to signal that time is over
+                if (self._hp.T - 1) == self._cache_cntr or obs['env_done'][-1]:
                     done = True
-                # print('total exec time', time.time() - tstart)
         self.env.finish()
 
         traj_ok = self.env.valid_rollout()
         if self._hp.rejection_sample:
             assert self.env.has_goal(), 'Rejection sampling enabled but env has no goal'
             traj_ok = self.env.goal_reached()
-            print('goal_reached', traj_ok)
+            self.logger.info('goal_reached', traj_ok)
 
         if self._hp.ask_confirmation:
             traj_ok = self.env.ask_confirmation()
@@ -473,3 +462,4 @@ class TimedLoop(BlockingLoop):
 
         self._required_rollout_metadata(agent_data, self._cache_cntr, traj_ok)
         return agent_data, obs, policy_outputs
+
