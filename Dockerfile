@@ -27,6 +27,8 @@ RUN apt-get update -y && apt-get install -y --no-install-recommends \
     tzdata \
     unzip \
     ffmpeg \
+    x11-apps \
+    kmod \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 RUN curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key | apt-key add - && \
@@ -104,12 +106,9 @@ RUN git clone https://github.com/youliangtan/edgeml && \
     source ~/myenv/bin/activate && \
     pip3 install -e .
 
-USER root
-RUN apt-get update -y && apt-get install -y \
-    x11-apps
-
 RUN source ~/myenv/bin/activate && pip install "numpy<2" --force-reinstall
 RUN source ~/myenv/bin/activate && pip install --upgrade "coverage>=7.3,<8"
 
 RUN echo 'alias widowx_env_service="python3 ~/widowx_envs/widowx_envs/widowx_env_service.py"' >> ~/.bashrc
 RUN echo "export ROBONETV2_ARM=wx250s" >> ~/.bashrc && source ~/.bashrc
+
