@@ -5,6 +5,7 @@ blue=""
 yellow=""
 wrist=""
 d435=""
+brio501=""
 
 # Run v4l2-ctl to fetch devices and parse them line by line
 while IFS= read -r line; do
@@ -15,6 +16,8 @@ while IFS= read -r line; do
         blue=$(echo "$line" | awk -F '(' '{print $2}' | awk -F ')' '{print $1}')
     elif [[ $line == *"HD Pro Webcam C920"* ]]; then
         yellow=$(echo "$line" | awk -F '(' '{print $2}' | awk -F ')' '{print $1}')
+    elif [[ $line == *"Brio 501"* ]]; then
+        brio501=$(echo "$line" | awk -F '(' '{print $2}' | awk -F ')' '{print $1}')
     elif [[ $line == *"Intel(R) RealSense(TM) Depth Ca"* ]]; then
         d435=$(echo "$line" | awk -F 'Ca \(' '{print $2}' | awk -F ')' '{print $1}')
     fi
@@ -26,4 +29,5 @@ blue: '$blue'
 yellow: '$yellow'
 wrist: '$wrist'
 D435: '$d435'
+Brio 501: '$brio501'
 EOF
