@@ -6,22 +6,29 @@ services:
       context: .
     entrypoint: ["/bin/bash", "-c", "/home/robonet/widowx_envs/scripts/run.sh"]
     environment:
-      - DISPLAY=:0
+      - DISPLAY=:1
+      - USB_CONNECTOR_CHART=/home/real/bridge_ws/src/bridge_data_robot/usb_connector_chart.yml
       - ROBONETV2_ARM=wx250s
       - DATA=/home/robonet/trainingdata
       - EXP=/home/robonet/experiments
-      - REALSENSE_SERIAL=_238722070138
+      - REALSENSE_SERIAL=_207122078479
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=all
-    user: robonet:46
+      - USE_REALSENSE=true
+    user: 1000:1000
+    group_add:
+      - "46"
+      - "44"
+      - "27"
     stdin_open: true
     tty: true
     device_cgroup_rules:
       - 'c *:* rmw'
     network_mode: host
+    restart: unless-stopped
     runtime: nvidia
     volumes:
-      - ${USB_CONNECTOR_CHART:-/dev/null}:/tmp/camera_connector_chart
+      - /home/real/bridge_ws/src/bridge_data_robot/usb_connector_chart.yml:/tmp/camera_connector_chart
       - /etc/localtime:/etc/localtime:ro
       # if you want to be able to edit widowx_envs code without rebuilding the image, this
       # overwrites the widowx_envs directory that was copied in at build time
