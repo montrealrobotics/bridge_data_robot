@@ -29,5 +29,5 @@ blue: '$blue'
 yellow: '$yellow'
 wrist: '$wrist'
 D435: '$d435'
-Brio 501: '$brio501'
+Brio501: '$brio501'
 EOF
