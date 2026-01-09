@@ -12,9 +12,7 @@ services:
       - DATA=/home/robonet/trainingdata
       - EXP=/home/robonet/experiments
       - REALSENSE_SERIAL=_207122078479
-      - NVIDIA_VISIBLE_DEVICES=all
-      - NVIDIA_DRIVER_CAPABILITIES=all
-      - USE_REALSENSE=true
+      - USE_REALSENSE=false
     user: 1000:1000
     group_add:
       - "46"
@@ -26,7 +24,6 @@ services:
       - 'c *:* rmw'
     network_mode: host
     restart: unless-stopped
-    runtime: nvidia
     volumes:
       - /home/real/bridge_ws/src/bridge_data_robot/usb_connector_chart.yml:/tmp/camera_connector_chart
       - /etc/localtime:/etc/localtime:ro
