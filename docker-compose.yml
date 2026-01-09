@@ -7,7 +7,6 @@ services:
     entrypoint: ["/bin/bash", "-c", "/home/robonet/widowx_envs/scripts/run.sh"]
     environment:
       - DISPLAY=:1
-      - USB_CONNECTOR_CHART=/home/real/bridge_ws/src/bridge_data_robot/usb_connector_chart.yml
       - ROBONETV2_ARM=wx250s
       - DATA=/home/robonet/trainingdata
       - EXP=/home/robonet/experiments
@@ -25,7 +24,7 @@ services:
     network_mode: host
     restart: unless-stopped
     volumes:
-      - /home/real/bridge_ws/src/bridge_data_robot/usb_connector_chart.yml:/tmp/camera_connector_chart
+      - ${USB_CONNECTOR_CHART:-/dev/null}:/tmp/camera_connector_chart
       - /etc/localtime:/etc/localtime:ro
       # if you want to be able to edit widowx_envs code without rebuilding the image, this
       # overwrites the widowx_envs directory that was copied in at build time
