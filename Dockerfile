@@ -29,15 +29,27 @@ RUN apt-get update -y && apt-get install -y --no-install-recommends \
     ffmpeg \
     x11-apps \
     kmod \
+    gstreamer1.0-tools \
+    gstreamer1.0-alsa \
+    gstreamer1.0-plugins-base \
+    gstreamer1.0-plugins-good \
+    gstreamer1.0-plugins-bad \
+    gstreamer1.0-plugins-ugly \
+    gstreamer1.0-libav \
+    libgstreamer1.0-dev \
+    libgstreamer-plugins-base1.0-dev \
+    libgstreamer-plugins-good1.0-dev \
+    libgstreamer-plugins-bad1.0-dev \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 RUN curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key | apt-key add - && \
     echo "deb http://packages.ros.org/ros2/ubuntu $(lsb_release -sc) main" \
       > /etc/apt/sources.list.d/ros2-latest.list && \
     apt-get update && apt-get install -y \
-      ros-humble-ros-base \
-      ros-humble-realsense2-camera \
-      ros-humble-v4l2-camera \
+    ros-humble-ros-base \
+    ros-humble-realsense2-camera \
+    ros-humble-v4l2-camera \
+    ros-humble-ros2-control-test-assets \
     && rm -rf /var/lib/apt/lists/*
 
 RUN apt-get update && apt-get install -y \

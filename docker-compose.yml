@@ -13,7 +13,7 @@ services:
       - REALSENSE_SERIAL=_207122078479
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=all
-      - USE_REALSENSE=true
+      - USE_REALSENSE=false
     user: 1000:1000
     group_add:
       - "46"
@@ -36,6 +36,7 @@ services:
       - ./trainingdata:/home/robonet/trainingdata
       # - ./widowx_envs:/home/robonet/widowx_envs
       - /dev:/dev  # for host tty access
+      - /tmp:/tmp
 
   bridge_data_v2:
     image: robonet-bridge-data-v2
