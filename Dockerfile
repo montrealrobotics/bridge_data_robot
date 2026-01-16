@@ -122,5 +122,6 @@ RUN source ~/myenv/bin/activate && pip install "numpy<2" --force-reinstall
 RUN source ~/myenv/bin/activate && pip install --upgrade "coverage>=7.3,<8"
 
 RUN echo 'alias widowx_env_service="python3 ~/widowx_envs/widowx_envs/widowx_env_service.py"' >> ~/.bashrc
+RUN echo "export ROS_DOMAIN_ID=38" >> ~/.bashrc
 RUN echo "export ROBONETV2_ARM=wx250s" >> ~/.bashrc && source ~/.bashrc
 

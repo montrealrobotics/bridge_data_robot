@@ -1,6 +1,7 @@
 #!/bin/bash
 
 ROBONETV2_ARM=wx250s && $(dirname "$0")/setup.sh || exit 1
+ROS_DOMAIN_ID=38
 
 source /opt/ros/humble/setup.bash
 source ~/interbotix_ws/install/setup.bash
