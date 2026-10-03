@@ -87,16 +87,15 @@ def generate_launch_description():
     non_python_node_launch = Node(
             condition=UnlessCondition(LaunchConfiguration('python_node')),
             package='image_publisher', executable='image_publisher_node', output='screen',
-            arguments=[LaunchConfiguration('device_0')],
+            arguments=[LaunchConfiguration('video_stream_provider')],
+            name=LaunchConfiguration('node_name'),
             parameters=[{'use_sim_time': LaunchConfiguration('use_sim_time')}],
-            remappings=[('image_raw', '/camera/image_raw'),
-                        ('camera_info', '/camera/camera_info')
+            remappings=[('image_raw', [LaunchConfiguration('camera_name'), '/image_raw']),
+                        ('camera_info', [LaunchConfiguration('camera_name'), '/camera_info'])
                         ]
     )
 
     return LaunchDescription([
-        python_node,
-        non_python_node_launch,
         video_stream_provider_arg,
         fps_arg,
         frame_id_arg,
@@ -106,5 +105,7 @@ def generate_launch_description():
         node_name_arg,
         python_node_arg,
         sim_time_arg,
-        device_0_arg
+        device_0_arg,
+        python_node,
+        non_python_node_launch,
     ])
