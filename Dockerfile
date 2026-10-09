@@ -1,4 +1,4 @@
-FROM ros:humble-ros-core-jammy
+FROM ros:jazzy-ros-core-noble
 
 ARG USER_ID=robonet
 ENV DEBIAN_FRONTEND=noninteractive
@@ -45,15 +45,17 @@ RUN set -euxo pipefail; \
     rm -rf /var/lib/apt/lists/*
 
 RUN apt-get update -y && apt-get install -y --no-install-recommends \
-    ros-humble-desktop \
-    ros-humble-ros2-control-test-assets \
-    ros-humble-realsense2-camera \
-    ros-humble-v4l2-camera \
+    ros-jazzy-desktop \
+    ros-jazzy-ros2-control-test-assets \
+    ros-jazzy-realsense2-camera \
+    ros-jazzy-v4l2-camera \
     && rm -rf /var/lib/apt/lists/*
 
 RUN rosdep init && rosdep update
 
 RUN git lfs install
+
+RUN userdel -r ubuntu 2>/dev/null || true
 
 RUN adduser --disabled-password --gecos '' "${USER_ID}" && \
     adduser "${USER_ID}" sudo && \
@@ -65,19 +67,23 @@ WORKDIR /home/${USER_ID}
 
 RUN mkdir -p /home/${USER_ID}/interbotix_ws/src
 
+# Install script from our fork, patched for Jazzy / Ubuntu 24.04
 RUN curl -fsSL \
-      'https://raw.githubusercontent.com/Interbotix/interbotix_ros_manipulators/refs/heads/humble/interbotix_ros_xsarms/install/amd64/xsarm_amd64_install.sh' \
+      'https://raw.githubusercontent.com/montrealrobotics/interbotix_ros_manipulators/refs/heads/main/interbotix_ros_xsarms/install/amd64/xsarm_amd64_install.sh' \
       -o /tmp/xsarm_amd64_install.sh && \
     chmod +x /tmp/xsarm_amd64_install.sh && \
-    yes | /tmp/xsarm_amd64_install.sh && \
+    /tmp/xsarm_amd64_install.sh -n -d jazzy && \
     rm -f /tmp/xsarm_amd64_install.sh
 
 ENV PYTHONPATH="${PYTHONPATH}:/home/${USER_ID}/interbotix_ws/src/interbotix_ros_toolboxes/interbotix_xs_toolbox"
 
 COPY widowx_envs/requirements.txt /tmp/requirements.txt
 
+RUN echo 'numpy<2' > /home/${USER_ID}/pip-constraints.txt
+ENV PIP_CONSTRAINT=/home/${USER_ID}/pip-constraints.txt
+
 RUN set -exo pipefail; \
-    source /opt/ros/humble/setup.bash; \
+    source /opt/ros/jazzy/setup.bash; \
     source /home/${USER_ID}/interbotix_ws/install/setup.bash || true; \
     python3 -m venv --system-site-packages /home/${USER_ID}/myenv; \
     source /home/${USER_ID}/myenv/bin/activate; \
@@ -98,7 +104,7 @@ ENV PYTHONPATH="${PYTHONPATH}:/home/${USER_ID}/interbotix_ws/src/widowx_envs"
 ENV PYTHONPATH="${PYTHONPATH}:/home/${USER_ID}/interbotix_ws/src/widowx_controller"
 
 RUN set -exo pipefail; \
-    source /opt/ros/humble/setup.bash; \
+    source /opt/ros/jazzy/setup.bash; \
     cd /home/${USER_ID}/interbotix_ws; \
     rosdep update; \
     sudo apt-get update -y; \
@@ -111,7 +117,7 @@ RUN set -exo pipefail; \
 RUN sudo ln -sf /home/${USER_ID}/widowx_envs/scripts/go_to_sleep_pose.py /usr/local/bin/go_sleep && \
     sudo ln -sf /home/${USER_ID}/widowx_envs/scripts/go_to_neutral_pose.py /usr/local/bin/go_neutral
 
-RUN echo 'source /opt/ros/humble/setup.bash' >> /home/${USER_ID}/.bashrc && \
+RUN echo 'source /opt/ros/jazzy/setup.bash' >> /home/${USER_ID}/.bashrc && \
     echo 'source ~/interbotix_ws/install/setup.bash' >> /home/${USER_ID}/.bashrc && \
     echo 'source ~/myenv/bin/activate' >> /home/${USER_ID}/.bashrc && \
     echo 'alias widowx_env_service="python3 ~/widowx_envs/widowx_envs/widowx_env_service.py"' >> /home/${USER_ID}/.bashrc && \

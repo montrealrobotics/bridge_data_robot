@@ -2,7 +2,7 @@
 
 ROBONETV2_ARM=wx250s && $(dirname "$0")/setup.sh || exit 1
 
-source /opt/ros/humble/setup.bash
+source /opt/ros/jazzy/setup.bash
 source ~/interbotix_ws/install/setup.bash
 source ~/myenv/bin/activate
 

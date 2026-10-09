@@ -6,7 +6,8 @@ services:
       context: .
     entrypoint: ["/bin/bash", "-c", "/home/robonet/widowx_envs/scripts/run.sh"]
     environment:
-      - DISPLAY=:1
+      - DISPLAY=${DISPLAY}
+      - XAUTHORITY=/home/robonet/.Xauthority
       - ROBONETV2_ARM=wx250s
       - DATA=/home/robonet/trainingdata
       - EXP=/home/robonet/experiments
@@ -33,6 +34,7 @@ services:
       - ./trainingdata:/home/robonet/trainingdata
       # - ./widowx_envs:/home/robonet/widowx_envs
       - /dev:/dev  # for host tty access
+      - ${HOME}/.Xauthority:/home/robonet/.Xauthority:ro
 
   bridge_data_v2:
     image: robonet-bridge-data-v2

@@ -9,6 +9,6 @@ fi
 
 cd
 if [ ! -f ".built" ]; then
-    source /opt/ros/humble/setup.bash
+    source /opt/ros/jazzy/setup.bash
     cd ~/interbotix_ws && colcon build && touch ~/.built
 fi

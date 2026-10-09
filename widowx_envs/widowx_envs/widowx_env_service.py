@@ -1,6 +1,7 @@
 #! /usr/bin/python3
 # This is the highest level interface to interact with the widowx setup.
 from copy import deepcopy
+import os
 import time
 import json
 from dataclasses import asdict
@@ -41,6 +42,18 @@ class ExtendedActionClient(ActionClient):
         self.broadcast_client = None
 
 
+def parse_camera_topics(topics: str) -> list:
+    """Turn a comma separated list of image topics into camera_topics entries."""
+    return [{"name": t.strip()} for t in topics.split(",") if t.strip()]
+
+
+# Image topics the client asks the robot to stream, e.g. for the RealSense node:
+#   WIDOWX_CAMERA_TOPICS=/D435/camera/D435/color/image_raw
+DEFAULT_CAMERA_TOPICS = parse_camera_topics(
+    os.environ.get("WIDOWX_CAMERA_TOPICS", "/blue/image_raw")
+)
+
+
 class WidowXConfigs:
     DefaultEnvParams = {
         "fix_zangle": 0.1,
@@ -56,7 +69,7 @@ class WidowXConfigs:
         "start_state": [0.3, 0.0, 0.15, 0, 0, 0, 1],
         "skip_move_to_neutral": False,
         "return_full_image": False,
-        "camera_topics": [{"name": "/blue/image_raw"}],
+        "camera_topics": DEFAULT_CAMERA_TOPICS,
     }
 
     DefaultActionConfig = ActionConfig(
@@ -402,6 +415,8 @@ def main():
     parser.add_argument("--ip", type=str, default="localhost")
     parser.add_argument("--port", type=int, default=5556)
     parser.add_argument("--test", action="store_true", help="run in test mode")
+    parser.add_argument("--camera_topics", type=str, default=None,
+                        help="comma separated image topics (default: $WIDOWX_CAMERA_TOPICS or /blue/image_raw)")
     args = parser.parse_args()
 
     if args.server:
@@ -424,7 +439,10 @@ def main():
         widowx_client = WidowXClient(host=args.ip, port=args.port)
 
         # NOTE: this normally takes 10 seconds when first time init
-        widowx_client.init(WidowXConfigs.DefaultEnvParams, image_size=256)
+        env_params = deepcopy(WidowXConfigs.DefaultEnvParams)
+        if args.camera_topics:
+            env_params["camera_topics"] = parse_camera_topics(args.camera_topics)
+        widowx_client.init(env_params, image_size=256)
 
         obs = None
         while obs is None:

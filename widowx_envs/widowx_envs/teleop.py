@@ -3,7 +3,8 @@
 import argparse
 import numpy as np
 import cv2
-from widowx_envs.widowx_env_service import WidowXClient, WidowXConfigs
+from copy import deepcopy
+from widowx_envs.widowx_env_service import WidowXClient, WidowXConfigs, parse_camera_topics
 
 def show_video(client, full_image=True):
     """
@@ -42,10 +43,16 @@ def main():
     parser = argparse.ArgumentParser(description='Teleoperation for WidowX Robot')
     parser.add_argument('--ip', type=str, default='localhost')
     parser.add_argument('--port', type=int, default=5556)
+    parser.add_argument('--camera_topics', type=str, default=None,
+                        help='comma separated image topics (default: $WIDOWX_CAMERA_TOPICS or /blue/image_raw)')
     args = parser.parse_args()
 
+    env_params = deepcopy(WidowXConfigs.DefaultEnvParams)
+    if args.camera_topics:
+        env_params["camera_topics"] = parse_camera_topics(args.camera_topics)
+
     client = WidowXClient(host=args.ip, port=args.port)
-    client.init(WidowXConfigs.DefaultEnvParams, image_size=256)
+    client.init(env_params, image_size=256)
 
     print_help()
     cv2.namedWindow("Robot Camera")

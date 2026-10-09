@@ -92,6 +92,7 @@ class StreamerLauncher(Node):
         for index, (provider, topic_name) in enumerate(zip(video_stream_providers, topic_names)):
             full_params = {
                 'video_stream_provider': provider,
+                'device_0': provider,
                 'camera_name': topic_name,
                 'node_name': f'streamer_{index}',
             }
