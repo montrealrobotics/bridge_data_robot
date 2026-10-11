@@ -35,10 +35,10 @@ echo "INSTALLING ROS --------------------------------"
 echo ""
 echo "Checking the Ubuntu version"
 case $version in
-  "trusty" | "xenial" | "bionic" | "focal" | "jammy")
+  "trusty" | "xenial" | "bionic" | "focal" | "jammy" | "noble")
   ;;
   *)
-    echo "ERROR: This script will only work on Trusty / Xenial / Bionic / Focal / Jammy. Exit."
+    echo "ERROR: This script will only work on Trusty / Xenial / Bionic / Focal / Jammy / Noble. Exit."
     exit 0
 esac
 
@@ -57,6 +57,10 @@ case $version in
   ;;
   "jammy")
   ROS_DISTRO="humble"
+  ;;
+  "noble")
+  ROS_DISTRO="jazzy"
+  ;;
 
 esac
 
@@ -71,7 +75,7 @@ else
 fi
 
 echo "Add the ROS repository"
-if [ ! -e /etc/apt/sources.list.d/ros-latest.list ]; then
+if [ "$version" != "jammy" ] && [ "$version" != "noble" ] && [ ! -e /etc/apt/sources.list.d/ros-latest.list ]; then
   sudo sh -c 'echo "deb http://packages.ros.org/ros/ubuntu $(lsb_release -sc) main" > /etc/apt/sources.list.d/ros-latest.list'
 fi
 
@@ -98,6 +102,14 @@ then
   python3-catkin-tools \
   python3-rosinstall \
   ros-$ROS_DISTRO-desktop-full
+elif [ "$ROS_DISTRO" = "jazzy" ]
+then
+  sudo apt install -y \
+  python3-rosdep \
+  python3-pip \
+  python3-colcon-common-extensions \
+  python3-vcstool \
+  ros-$ROS_DISTRO-desktop
 elif [ "$ROS_DISTRO" = "humble" ]
 then
   sudo apt install -y \
@@ -131,7 +143,7 @@ if [ ! -e /etc/ros/rosdep/sources.list.d/20-default.list ]; then
 fi
 rosdep update
 
-if ! command -v roscore &> /dev/null
+if ! grep -qs "source /opt/ros/$ROS_DISTRO/setup.bash" ~/.bashrc
 then
   echo "source /opt/ros/$ROS_DISTRO/setup.bash" >> ~/.bashrc
 fi

@@ -3,13 +3,35 @@
 Code for controlling Trossen WidowX robot arms.
 
 - `widowx_envs`: contains the `widowx_envs` Python package with all of the WidowX controller code.
-- `docker_compose.yml`: contains all of the docker-compose services that will be used to run the robot.
+- `docker-compose.yml`: contains all of the docker-compose services that will be used to run the robot.
 
 ## Setup
 
-First, install the dependencies on the host machine by running `./host_install.sh`.
+The robot software (ROS 2 Jazzy, the Interbotix drivers and this repo) runs inside Docker, so the host
+only needs a few things installed.
 
-Next, we need to build and launch the ROS service that communicates with the robot. This service is defined by the `robonet` entry in `docker-compose.yml`. It uses the `robonet-base` image which is built from the `widowx_envs` directory (see `widowx_envs/Dockerfile`). To build and run the `robonet-base` service, run:
+### 1. Install the host dependencies
+
+Run `./host_install.sh` on the robot comntrol computer (Ubuntu 24.04). It asks what to install:
+
+| Prompt | Needed? | What it does |
+|---|---|---|
+| Install WidowX drivers? | **yes** | Installs the Interbotix udev rule on the host: creates `/dev/ttyDXL` for the arm and sets the USB latency to 1 ms. udev rules only work on the host, not inside Docker. |
+| Install Docker? | **yes** | Answer yes to "non-root user" so you can run `docker` without `sudo` (log out and back in afterwards). |
+| Install nvidia-docker? | only for GPU inference here | The robot container doesn't need it. Only if this computer also runs policy inference in Docker on an NVIDIA GPU (see Evaluating policies). |
+| Install docker-compose? | **yes** | Used to build and run the containers. |
+| Install ROS on the host? | **no** (optional) | See below. |
+
+**ROS on the host is not required.** ROS is installed in the container. Installing it on the host only
+lets you run ROS tools (`ros2 topic list`, `ros2 topic hz`, `rviz2`) directly on this machine instead of
+through `docker compose exec` (the containers use host networking, so host tools see their topics). It
+installs the same distro as the containers (Jazzy on 24.04, Humble on 22.04) but is a large install
+and can take a while, so skip it unless you want those tools.
+
+### 2. Build and start the robot container
+
+The ROS service that talks to the robot is the `robonet` entry in `docker-compose.yml`. It uses the
+`robonet-base` image, built from the `Dockerfile` in this directory. To build and run it:
 
 ```bash
 # first generate the usb config file
@@ -40,22 +62,33 @@ If you really want to, you can also attach a bash shell interactively using `doc
 
 ### Using RealSense cameras
 
-The RealSense cameras require different drivers than RGB cameras.  If you are using RealSenses, change the `camera_string` in `widowx_envs/scripts/run.sh` to `realsense:=true`.
+RealSense cameras use their own ROS driver instead of the webcam streamers. To use one, set these in the
+`robonet` service of `docker-compose.yml` and restart the container:
 
-You will also need to update the device serial number in `widowx_envs/widowx_controller/launch/widowx_rs.launch` to match your cameras.
+```yaml
+- USE_REALSENSE=true
+```
+
+### Camera configuration
+
+With the container running, open the camera selector (from an `ssh -X` session or a desktop, as it opens
+a window):
+
+```bash
+docker compose exec robonet bash -lic "python3 ~/widowx_envs/widowx_envs/select_cameras.py"
+```
+
+It shows a live thumbnail of every camera topic that is publishing. Click the thumbnails of all camera feeds you want to use, press `s` to save,
+`q` to quit. The selection is saved to `widowx_envs/cameras.yaml` and used by data collection, teleop
+and eval. You only need to run it again when your cameras change.
 
 ## Data collection
 
 First, make sure the `robonet-base` container is running using the above command. Then, run the following commands:
 
+Data is saved to `./trainingdata` (mounted in the container at `/home/robonet/trainingdata`).
+
 ```bash
-# first create an empty directory to store the data
-mkdir -p $HOME/widowx_data
-
-# give sudo write access to the container
-# we can check the id by running `id` in the container
-sudo chown -R 1000:1002 $HOME/widowx_data
-
 # access the container
 docker compose exec robonet bash
 
@@ -75,84 +108,35 @@ This is expected, as our data collection requires the use of a Meta Quest VR hea
 
 ## Evaluating policies
 
-There are two ways to interface a policy with the robot: (1) the docker compose service method or (2) the (newer) server-client method. In general, we recommend the server-client method.
+Policies run on an inference machine that controls the robot over the network (server-client): the robot
+control computer runs a server that receives actions, and the policy runs as a client that sends them. The
+inference machine does **not** need ROS and can be a separate GPU machine, or the robot computer itself.
 
-### Docker compose service method
-
-The first method is to install the neccesary code and dependencies for running the policy in the same environment as the robot dependencies. This is done by creating a new docker compose service in `docker-compose.yml`. 
-
-See `docker-compose.yml` for an example with the [bridge_data_v2](https://github.com/rail-berkeley/bridge_data_v2) codebase. Each codebase also needs a minimal Dockerfile that builds on top of the `robonet-base` image. The Dockerfile for the `bridge_data_v2` codebase looks like:
-
-```Dockerfile
-FROM robonet-base:latest
-
-COPY requirements.txt /tmp/requirements.txt
-RUN ~/myenv/bin/pip install -r /tmp/requirements.txt
-RUN ~/myenv/bin/pip install --upgrade "jax[cuda11_pip]==0.4.13" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
-
-# this path will get mounted as a volume (see `docker-compose.yml`)
-ENV PYTHONPATH=${PYTHONPATH}:/home/robonet/code/bridge_data_v2
-
-# modify packages to work with python 3.8 (ros noetic needs python 3.8)
-# to avoid orbax checkpoint error, downgrade flax 
-RUN ~/myenv/bin/pip install flax==0.6.11
-# to avoid typing errors, upgrade distrax
-RUN ~/myenv/bin/pip install distrax==0.1.3
-
-# avoid git safe directory errors
-RUN git config --global --add safe.directory /home/robonet/code/bridge_data_v2
-
-WORKDIR /home/robonet/code/bridge_data_v2
-```
-
-To run the service, clone the [bridge_data_v2](https://github.com/rail-berkeley/bridge_data_v2) repo into `bridge_data_robot/code`.
-
-Then, build the new service/container:
-
-```bash
-docker compose build bridge_data_v2
-```
-
-Now, we can run commands in this container similar to the previous section. We just need to make sure the`robonet-base` container is running in the background (see the setup section).
-
-For instance, to run the `bridge_data_v2` evaluation script:
-
-```bash
-docker compose run bridge_data_v2 bash -lic "python experiments/eval_gc.py ..."
-```
-
-To execute commands in the docker container with an interactive shell, you can again do `docker compose run bridge_data_v2 bash`.
-
-### Server-client method
-
-With this setup, the robot is run as a server that receives actions and the policy acts as a client that sends actions. This "server-client" architecture allows us to both isolate robot controller and policy dependencies, as well as perform inference on a separate machine from the one used to control the robot (though in the simplest case, both the robot and policy can run on the same machine).
-
-First, run the server on the robot:
+**1. Start the server on the robot computer:**
 
 ```bash
 docker compose exec robonet bash -lic "widowx_env_service --server"
 ```
 
-Then, we'll create an environment to run the client. This can be on the same machine as the robot or a different machine. First, create a new python environment (e.g conda) with the policy dependencies (e.g [bridge_data_v2](https://github.com/rail-berkeley/bridge_data_v2)). Additionally, install the [edgeml](https://github.com/youliangtan/edgeml) library. Finally, install the `widowx_envs` package from this repo:
+**2. Set up the inference machine** with our policy code,
+[montrealrobotics/bridge_data_v2](https://github.com/montrealrobotics/bridge_data_v2) (branch `ubuntu_24`):
+follow its README's *Environment* section (Docker or a uv Python environment), then its *Evaluation*
+section to run a policy with `experiments/eval.py --ip <ROBOT_IP>`.
+
+**3. Check the connection** from the inference machine (the robot executes a few predefined movements):
 
 ```bash
-cd widowx_envs
-pip install -e .
+widowx_env_service --client --ip <ROBOT_IP>
 ```
 
-Now, we are ready to communicate with the server. To verify that everything is set up correctly run:
+`--ip` defaults to `localhost` (inference on the robot computer). The cameras are defined
+in (`widowx_envs/cameras.yaml`); override with `--camera_topics` or
+`WIDOWX_CAMERA_TOPICS` if needed.
+
+Extra util, to teleoperate the arm remotely with the keyboard:
 
 ```bash
-python widowx_envs/widowx_env_service.py --client
-```
-
-This command assumes the server is running on `localhost` (i.e the same machine). If you're running the client on a different machine from the server, use `--ip` to specify the ip address of the server.
-
-The robot should execute a few predefined movements. See the `bridge_data_v2` evaluation script [here](https://github.com/rail-berkeley/bridge_data_v2/blob/main/experiments/eval.py) for an example of how to send actions to the server. 
-
-Extra Util: To try teleop the robot arm remotely
-```bash
-python3 widowx_envs/widowx_envs/teleop.py --ip <IP_ADDRESS>
+python -m widowx_envs.teleop --ip <ROBOT_IP>
 ```
 
 ## Troubleshooting

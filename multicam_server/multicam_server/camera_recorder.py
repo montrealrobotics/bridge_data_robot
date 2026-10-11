@@ -158,6 +158,8 @@ class CameraRecorder(Node):
 
     def get_image(self, arg=None):
         self._latest_image.mutex.acquire()
+        if self._latest_image.img_cv2 is None and self._latest_image.img_msg is not None:
+            self._proc_image(self._latest_image, self._latest_image.img_msg)
         time_stamp, img_cv2 = self._latest_image.tstamp_img, self._latest_image.img_cv2
         #current_hash = hashlib.sha256(img_cv2.tobytes()).hexdigest()
         #if self._last_hash_get_image is not None:
@@ -208,9 +210,15 @@ class CameraRecorder(Node):
 
     def store_latest_im(self, data):
         with self._latest_image.mutex:
-            self._proc_image(self._latest_image, data)
+            if self._is_first_status or (self._tracking_enabled and self._is_tracking) or \
+                    (self._save_vides and self._saving):
+                self._proc_image(self._latest_image, data)
+            else:
+                self._latest_image.img_msg = data
+                self._latest_image.tstamp_img = data.header.stamp
+                self._latest_image.img_cv2 = None
 
-            current_hash = hashlib.sha256(self._latest_image.img_cv2.tobytes()).hexdigest()
+            current_hash = hashlib.sha1(bytes(memoryview(data.data)[::101])).hexdigest()
 
             if self._is_first_status:
                 self._cam_height, self._cam_width = self._latest_image.img_cv2.shape[:2]

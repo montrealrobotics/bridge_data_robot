@@ -31,12 +31,6 @@ def generate_launch_description():
         "realsense", default_value="true", description="Enable RealSense camera"
     )
 
-    serial_no_camera1_arg = DeclareLaunchArgument(
-        "serial_no_camera1",
-        default_value="_913522070688",
-        description="Serial number for camera1 (Replace with actual serial number)",
-    )
-
     camera1_arg = DeclareLaunchArgument(
         "camera1",
         default_value="D435",
@@ -51,6 +45,13 @@ def generate_launch_description():
 
     initial_reset_arg = DeclareLaunchArgument(
         "initial_reset", default_value="true", description="Initial reset parameter"
+    )
+
+    color_profile_arg = DeclareLaunchArgument(
+        "color_profile_camera1", default_value="640x480x30", description="RealSense colour stream WxHxFPS"
+    )
+    depth_profile_arg = DeclareLaunchArgument(
+        "depth_profile_camera1", default_value="640x480x30", description="RealSense depth stream WxHxFPS"
     )
 
     interbotix_xsarm_control_dir = get_package_share_directory(
@@ -91,9 +92,10 @@ def generate_launch_description():
                 ),
                 condition=IfCondition(LaunchConfiguration("realsense")),
                 launch_arguments={
-                    "serial_no": LaunchConfiguration("serial_no_camera1"),
                     "camera_name": LaunchConfiguration("tf_prefix_camera1"),
                     "initial_reset": LaunchConfiguration("initial_reset"),
+                    "rgb_camera.color_profile": LaunchConfiguration("color_profile_camera1"),
+                    "depth_module.depth_profile": LaunchConfiguration("depth_profile_camera1"),
                 }.items(),
             ),
         ]
@@ -104,10 +106,11 @@ def generate_launch_description():
         camera_connector_chart_arg,
         python_node_arg,
         realsense_arg,
-        serial_no_camera1_arg,
         camera1_arg,
         tf_prefix_camera1_arg,
         initial_reset_arg,
+        color_profile_arg,
+        depth_profile_arg,
         xsarm_control_launch,
         multicam_launch,
         realsense_launch,

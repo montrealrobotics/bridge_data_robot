@@ -1,16 +1,6 @@
 #!/usr/bin/env bash
 
 
-read -r -p "Install ROS? [Y/n] " response
-case "$response" in
-  [nN][oO]|[nN])
-    install_ros=false
-    ;;
-  *)
-    install_ros=true
-    ;;
-esac
-
 read -r -p "Install WidowX drivers? [Y/n] " response
 case "$response" in
   [nN][oO]|[nN])
@@ -69,6 +59,20 @@ case "$response" in
     ;;
   *)
     install_docker_compose=true
+    ;;
+esac
+
+echo ""
+echo "Optional: install ROS on the host as well. NOT required - the robot runs entirely in Docker, which"
+echo "has its own ROS. Only useful to run ROS tools (ros2 topic, rviz2) directly on this machine. It is a"
+echo "large install (~1500 packages on a fresh system) and can take a while."
+read -r -p "Install ROS on the host? [y/N] " response
+case "$response" in
+  [yY][eE][sS]|[yY])
+    install_ros=true
+    ;;
+  *)
+    install_ros=false
     ;;
 esac
 
