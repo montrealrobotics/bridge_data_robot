@@ -1,138 +1,177 @@
 #! /usr/bin/python3
-    
-from widowx_envs.policies.policy import Policy
-from widowx_envs.utils.utils import AttrDict
-from widowx_envs.control_loops import Environment_Exception
-import widowx_envs.utils.transformation_utils as tr
-import numpy as np
+import threading
 import time
 
-from pyquaternion import Quaternion
+import numpy as np
 
-##############################################################################
+from widowx_envs.policies.policy import Policy
+from widowx_envs.utils.utils import AttrDict
+import widowx_envs.utils.transformation_utils as tr
+
+
+def vec_to_reorder_mat(vec):
+    X = np.zeros((len(vec), len(vec)))
+    for i in range(X.shape[0]):
+        ind = int(abs(vec[i])) - 1
+        X[i, ind] = np.sign(vec[i])
+    return X
+
 
 class VRTeleopPolicy(Policy):
     def __init__(self, ag_params, policyparams):
-
-        """ Computes actions from states/observations. """
         self._hp = self._default_hparams()
         self._override_defaults(policyparams)
 
-        self.last_pressed_times = {}
         self.env = ag_params.env_handle
-
         self.reader = self.env.oculus_reader
-        # self.prev_vr_transform = None
         self.action_space = self.env._hp.action_mode
-        self.prev_handle_press = False
-        self.reference_vr_transform = None
-        self.reference_robot_transform = None
         self.internal_counter = 0
-        self.internal_counter_default_policy = 0
+
+        self.controller_id = 'r' if self._hp.right_controller else 'l'
+        self.spatial_coeff = self._hp.spatial_coeff
+        self.global_to_env_mat = vec_to_reorder_mat(self._hp.rmat_reorder)
+        self.vr_to_global_mat = np.eye(4)
+        self.reset_orientation = True
+        self._lock = threading.Lock()
+        self.reset_state()
+        threading.Thread(target=self._update_internal_state, daemon=True).start()
 
     def _default_hparams(self):
         dict = AttrDict(
             load_file="",
             type=None,
             policy_T=None,
+            right_controller=True,
+            spatial_coeff=1.0,
+            rmat_reorder=[-2, -1, -3, 4],
+            gripper_scale=1.5,
         )
         default_dict = super(Policy, self)._default_hparams()
         default_dict.update(dict)
         return default_dict
 
+    def reset_state(self):
+        with self._lock:
+            self._state = {
+                "poses": {},
+                "buttons": {"A": False, "B": False, "X": False, "Y": False},
+                "movement_enabled": False,
+                "controller_on": True,
+            }
+            self.update_sensor = True
+            self.reset_origin = True
+            self.robot_origin = None
+            self.vr_origin = None
+            self.vr_state = None
 
-    def get_pose_and_button(self):
-        poses, buttons = self.reader.get_transformations_and_buttons()
-        if poses == {}:
-            return None, None, None, None
-        return poses['r'], buttons['RTr'], buttons['rightTrig'][0], buttons['RG']
+    def reset(self):
+        self.internal_counter = 0
+        self.reset_state()
 
+    def _update_internal_state(self, num_wait_sec=5, hz=50):
+        side = self.controller_id.upper()
+        last_read_time = time.time()
+        while True:
+            time.sleep(1 / hz)
+            poses, buttons = self.reader.get_transformations_and_buttons()
+            with self._lock:
+                self._state["controller_on"] = time.time() - last_read_time < num_wait_sec
+                if self.controller_id not in poses or side + "G" not in buttons:
+                    continue
 
-    def act_use_fixed_reference(self, t, i_tr, images, task_id):
-        # print("time update cmds", time.time() - self.last_update_time)
-        self.last_update_time = time.time()
-        t1 = time.time()
-        current_vr_transform, trigger, trigger_continuous, handle_button = self.get_pose_and_button()
-        if current_vr_transform is None:
-            return self.get_default_action(t, i_tr, images, task_id)
-        else:
-            if not self.prev_handle_press and handle_button:
-                print("resetting reference pose")
-                self.internal_counter_default_policy = 0
-                self.reference_vr_transform = self.oculus_to_robot(current_vr_transform)
-                self.initial_vr_offset = tr.RpToTrans(np.eye(3), self.reference_vr_transform[:3, 3])
-                self.reference_vr_transform = tr.TransInv(self.initial_vr_offset).dot(self.reference_vr_transform)  ##
+                toggled = self._state["movement_enabled"] != buttons[side + "G"]
+                self.update_sensor = self.update_sensor or buttons[side + "G"]
+                self.reset_orientation = self.reset_orientation or buttons[side + "J"]
+                self.reset_origin = self.reset_origin or toggled
 
-                self.reference_robot_transform, _ = self.env.get_target_state()
-                if self.action_space == '3trans1rot':
-                    self.reference_robot_transform = self.zero_out_pitchroll(self.reference_robot_transform)
-                self.prev_commanded_transform = self.reference_robot_transform
+                self._state["poses"] = poses
+                self._state["buttons"] = buttons
+                self._state["movement_enabled"] = buttons[side + "G"]
+                self._state["controller_on"] = True
+                last_read_time = time.time()
 
-            if not handle_button:
-                self.internal_counter = 0
-                self.internal_counter_default_policy += 1
-                self.reference_vr_transform = None
-                self.reference_robot_transform, _ = self.env.get_target_state()
-                self.prev_handle_press = False
-                if self.action_space == '3trans1rot':
-                    self.reference_robot_transform = self.zero_out_pitchroll(self.reference_robot_transform)
-                self.prev_commanded_transform = self.reference_robot_transform
-                return self.get_default_action(t, i_tr, images, task_id)
-        self.prev_handle_press = True
-        self.internal_counter += 1
+                # update the definition of "forward"
+                stop_updating = buttons[side + "J"] or self._state["movement_enabled"]
+                if self.reset_orientation:
+                    rot_mat = np.asarray(poses[self.controller_id])
+                    if stop_updating:
+                        self.reset_orientation = False
+                    try:
+                        rot_mat = np.linalg.inv(rot_mat)
+                    except np.linalg.LinAlgError:
+                        rot_mat = np.eye(4)
+                        self.reset_orientation = True
+                    self.vr_to_global_mat = rot_mat
 
-        current_vr_transform = self.oculus_to_robot(current_vr_transform)
-        current_vr_transform = tr.TransInv(self.initial_vr_offset).dot(current_vr_transform)  ##
+    def _process_reading(self):
+        pose = self.global_to_env_mat @ self.vr_to_global_mat @ np.asarray(self._state["poses"][self.controller_id])
+        trig = self._state["buttons"]["rightTrig" if self.controller_id == 'r' else "leftTrig"][0]
+        self.vr_state = {"pos": self.spatial_coeff * pose[:3, 3], "rot": pose[:3, :3], "gripper": trig}
 
-        self.env._controller.publish_transform(current_vr_transform, 'currentvr_robotsystem')
-        delta_vr_transform = current_vr_transform.dot(tr.TransInv(self.reference_vr_transform))
+    def act(self, t=None, i_tr=None, images=None, task_id=None):
+        with self._lock:
+            if self._state["poses"] == {} or self.controller_id not in self._state["poses"]:
+                return self.get_zero_action()
+            if self.update_sensor:
+                self._process_reading()
+                self.update_sensor = False
+            reset_origin, self.reset_origin = self.reset_origin, False
+            vr_state = self.vr_state
+            movement_enabled = self._state["movement_enabled"]
 
-        self.env._controller.publish_transform(self.reference_robot_transform, 'reference_robot_transform')
-        M_rob, p_rob = tr.TransToRp(self.reference_robot_transform)
-        M_delta, p_delta = tr.TransToRp(delta_vr_transform)
-        new_robot_transform = tr.RpToTrans(M_delta.dot(M_rob), p_rob + p_delta)
+        prev_target, _ = self.env.get_target_state()
+        if reset_origin or self.robot_origin is None:
+            self.robot_origin = prev_target
+            self.vr_origin = vr_state
+
+        rot_offset = vr_state["rot"].dot(self.vr_origin["rot"].T)
+        target_pos = self.robot_origin[:3, 3] + (vr_state["pos"] - self.vr_origin["pos"])
+        target_rot = rot_offset.dot(self.robot_origin[:3, :3])
+        new_robot_transform = tr.RpToTrans(target_rot, target_pos)
 
         if self.action_space == '3trans1rot':
             new_robot_transform = self.zero_out_pitchroll(new_robot_transform)
         if self.action_space == '3trans':
             new_robot_transform = self.zero_out_yawpitchroll(new_robot_transform)
-        self.env._controller.publish_transform(new_robot_transform, 'des_robot_transform')
 
-        prev_target_pos, _ = self.env.get_target_state()
-        delta_robot_transform = new_robot_transform.dot(tr.TransInv(prev_target_pos))
-        self.env._controller.publish_transform(delta_robot_transform, 'delta_robot_transform')
-        self.prev_commanded_transform = new_robot_transform
-
-        des_gripper_position = (1 - trigger_continuous)
+        des_gripper_position = 1.0 - float(np.clip(vr_state["gripper"] * self._hp.gripper_scale, 0.0, 1.0))
+        delta_robot_transform = new_robot_transform.dot(tr.TransInv(prev_target))
         actions = tr.transform2action_local(delta_robot_transform, des_gripper_position, self.env._controller.pose[:3])
 
         if self.env._hp.action_mode == '3trans1rot':
-            actions = np.concatenate([actions[:3], np.array([actions[5]]), np.array([des_gripper_position])])  # only use the yaw rotation
+            actions = np.concatenate([actions[:3], np.array([actions[5]]), np.array([des_gripper_position])])
         if self.env._hp.action_mode == '3trans':
-            actions = np.concatenate([actions[:3], np.array([des_gripper_position])])  # only use the yaw rotation
+            actions = np.concatenate([actions[:3], np.array([des_gripper_position])])
 
-        if np.linalg.norm(actions[:3]) > 0.5:
-            print('delta transform too large!')
-            print('Press c and enter to continue')
-            import pdb; pdb.set_trace()
-            raise Environment_Exception
+        output = {'actions': actions, 'new_robot_transform': new_robot_transform,
+                  'delta_robot_transform': delta_robot_transform, 'policy_type': 'VRTeleopPolicy'}
 
-        output = {'actions': actions, 'new_robot_transform':new_robot_transform, 'delta_robot_transform': delta_robot_transform, 'policy_type': 'VRTeleopPolicy'}
-
+        if movement_enabled:
+            self.internal_counter += 1
         if self._hp.policy_T and self.internal_counter >= self._hp.policy_T:
             output['done'] = True
-
         return output
 
-    def act(self, t=None, i_tr=None, images=None, task_id=None):
-        return self.act_use_fixed_reference(t, i_tr, images, task_id)
-    
-    def get_action(self, obs_np, task_id_vec=None):
-        dict = self.act(images=obs_np, task_id=task_id_vec)
-        return dict['actions'], {'policy_type': dict['policy_type']}
+    def forward(self, obs_dict=None, include_info=False):
+        out = self.act()
+        if include_info:
+            info = {"target_cartesian_position": out.get("new_robot_transform"), **self.get_info()}
+            return out["actions"], info
+        return out["actions"]
 
-    def get_default_action(self, t, i_tr, images, task_id):
-        return self.get_zero_action()
+    def get_action(self, obs_np, task_id_vec=None):
+        out = self.act(images=obs_np, task_id=task_id_vec)
+        return out['actions'], {'policy_type': out['policy_type']}
+
+    def get_info(self):
+        with self._lock:
+            buttons = self._state["buttons"]
+            return {
+                "success": buttons.get("A" if self.controller_id == 'r' else "X", False),
+                "failure": buttons.get("B" if self.controller_id == 'r' else "Y", False),
+                "movement_enabled": self._state["movement_enabled"],
+                "controller_on": self._state["controller_on"],
+            }
 
     def get_zero_action(self):
         if self.env._hp.action_mode == '3trans3rot':
@@ -143,37 +182,16 @@ class VRTeleopPolicy(Policy):
             actions = np.concatenate([np.zeros(3), np.array([1])])
         else:
             raise NotImplementedError
-        return {'actions': actions, 'new_robot_transform':np.eye(4), 'delta_robot_transform': np.eye(4), 'policy_type': 'VRTeleopPolicy'}
+        return {'actions': actions, 'new_robot_transform': np.eye(4), 'delta_robot_transform': np.eye(4),
+                'policy_type': 'VRTeleopPolicy'}
 
     def zero_out_pitchroll(self, new_robot_transform):
         rot, xyz = tr.TransToRp(new_robot_transform)
         euler = tr.rotationMatrixToEulerAngles(rot.dot(self.env._controller.default_rot.transpose()), check_error_thresh=1e-5)
         euler[:2] = np.zeros(2)  # zeroing out pitch roll
         new_rot = tr.eulerAnglesToRotationMatrix(euler).dot(self.env._controller.default_rot)
-        new_robot_transform = tr.RpToTrans(new_rot, xyz)
-        return new_robot_transform
+        return tr.RpToTrans(new_rot, xyz)
 
     def zero_out_yawpitchroll(self, new_robot_transform):
         rot, xyz = tr.TransToRp(new_robot_transform)
-        euler = tr.rotationMatrixToEulerAngles(rot.dot(self.env._controller.default_rot.transpose()), check_error_thresh=1e-5)
-        euler = np.zeros(3)  # zeroing out yaw pitch roll
-        new_rot = tr.eulerAnglesToRotationMatrix(euler).dot(self.env._controller.default_rot)
-        new_robot_transform = tr.RpToTrans(new_rot, xyz)
-        return new_robot_transform
-
-    def oculus_to_robot(self, current_vr_transform):
-        current_vr_transform = tr.RpToTrans(Quaternion(axis=[0, 0, 1], angle=np.pi / 2).rotation_matrix,
-                                            np.zeros(3)).dot(
-            tr.RpToTrans(Quaternion(axis=[1, 0, 0], angle=np.pi / 2).rotation_matrix, np.zeros(3))).dot(
-            current_vr_transform)
-        return current_vr_transform
-
-    def reset(self):
-        self.internal_counter = 0
-        self.internal_counter_default_policy = 0
-        self.prev_vr_transform = None  # used for self.act_use_deltas only
-
-        # used for act_use_fixed_reference only:
-        self.prev_handle_press = False
-        self.reference_vr_transform = None
-        self.reference_robot_transform = None
+        return tr.RpToTrans(self.env._controller.default_rot, xyz)

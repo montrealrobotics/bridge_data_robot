@@ -191,6 +191,9 @@ class WidowX_Controller(RobotControllerBase, Node):
 
         self._joint_lock = Lock()
         self._angles, self._angles_vel_sorted, self._effort_sorted, self._angles_sorted,  self._velocities, self._effort = {}, {}, {}, {}, {}, {}
+        self.bot.dxl.robot_node.destroy_subscription(self.bot.dxl.sub_joint_states)
+        if self.custom_gripper_controller:
+            self.destroy_subscription(self._gripper._joint_subscription)
         # Create callback group for joint state subscriber
         self._joint_cb_group = ReentrantCallbackGroup()
         self._joint_subscription = self.create_subscription(
@@ -227,7 +230,9 @@ class WidowX_Controller(RobotControllerBase, Node):
         """Publish transform using ROS2 tf2 broadcaster"""
         translation = transform[:3, 3]
 
-        br = tf2_ros.TransformBroadcaster(self)
+        if getattr(self, "_tf_broadcaster", None) is None:
+            self._tf_broadcaster = tf2_ros.TransformBroadcaster(self)
+        br = self._tf_broadcaster
         t = TransformStamped()
 
         t.header.stamp = self.get_clock().now().to_msg()
@@ -414,6 +419,10 @@ class WidowX_Controller(RobotControllerBase, Node):
             self._angles_vel_sorted = np.array([self._velocities[k] for k in self.joint_names])
             self._effort_sorted = np.array([self._effort[k] for k in self.joint_names])
             self.pose_matrix, self.pose = self.get_cartesian_pose()
+        with self.bot.dxl.js_mutex:
+            self.bot.dxl.joint_states = msg
+        if self.custom_gripper_controller:
+            self._gripper._joint_callback(msg)
 
     def get_joint_angles(self):
         """
@@ -435,11 +444,12 @@ class WidowX_Controller(RobotControllerBase, Node):
 
     def get_cartesian_pose(self):
         """Returns cartesian end-effector pose"""
-        joint_positions = list(
-            self.bot.dxl.joint_states.position[
+        angles = getattr(self, "_angles_sorted", None)
+        if angles is None:
+            angles = self.bot.dxl.joint_states.position[
                 self.bot.arm.waist_index : (self._qn + self.bot.arm.waist_index)
             ]
-        )
+        joint_positions = list(angles)
         pose = FKinSpace(self.bot.arm.robot_des.M, self.bot.arm.robot_des.Slist, joint_positions)
 
         non_matrix = np.concatenate(

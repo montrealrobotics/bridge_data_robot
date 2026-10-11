@@ -19,7 +19,7 @@ while IFS= read -r line; do
     elif [[ $line == *"Brio 501"* ]]; then
         brio501=$(echo "$line" | awk -F '(' '{print $2}' | awk -F ')' '{print $1}')
     elif [[ $line == *"Intel(R) RealSense(TM) Depth Ca"* ]]; then
-        d435=$(echo "$line" | awk -F 'Ca \(' '{print $2}' | awk -F ')' '{print $1}')
+        d435=""
     fi
 done < <(v4l2-ctl --list-devices)
 

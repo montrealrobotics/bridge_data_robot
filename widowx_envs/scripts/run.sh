@@ -6,6 +6,8 @@ source /opt/ros/jazzy/setup.bash
 source ~/interbotix_ws/install/setup.bash
 source ~/myenv/bin/activate
 
+adb start-server > /dev/null 2>&1 || true
+
 # using 'exec' here is very important because ros2 launch needs to do some cleanup after it exits
 # so when the container is killed the SIGTERM needs to be passed to ros2 launch
 exec ros2 launch widowx_controller widowx_rs.launch.py \

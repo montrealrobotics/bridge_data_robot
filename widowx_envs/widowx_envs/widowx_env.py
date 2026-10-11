@@ -159,10 +159,11 @@ class VR_WidowX(WidowXEnv):
 
     def get_vr_buttons(self):
         poses, buttons = self.oculus_reader.get_transformations_and_buttons()
-        if 'RG' in buttons:
-            buttons['handle'] = buttons['RG']
-        else:
-            buttons['handle'] = False
+        buttons = dict(buttons)
+        # the right-hand keys are missing whenever the headset briefly loses the right controller
+        for key in ('A', 'B', 'RThU', 'RJ', 'RG', 'RTr'):
+            buttons.setdefault(key, False)
+        buttons['handle'] = buttons['RG']
         return buttons
 
     def _default_hparams(self):
@@ -203,6 +204,9 @@ class VR_WidowX(WidowXEnv):
             time.sleep(0.01)
             if 'B' in buttons and buttons['B']:
                 self.move_to_neutral()
+                # the arm moved, so the target pose teleop starts from has to follow (otherwise it is
+                # still the pre-neutral pose and every step commands that pose)
+                self._reset_previous_qpos()
                 print("moved to neutral. waiting for {} button press to start recording.".format(start_key))
         return self.current_obs()
 

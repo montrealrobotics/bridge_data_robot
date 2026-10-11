@@ -443,6 +443,8 @@ class TimedLoop(BlockingLoop):
 
                 if (self._hp.T - 1) == self._cache_cntr or obs['env_done'][-1]:
                     done = True
+            else:
+                time.sleep(0.001)
         self.env.finish()
 
         traj_ok = self.env.valid_rollout()

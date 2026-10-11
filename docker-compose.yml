@@ -27,12 +27,12 @@ services:
     volumes:
       - ${USB_CONNECTOR_CHART:-/dev/null}:/tmp/camera_connector_chart
       - /etc/localtime:/etc/localtime:ro
-      # if you want to be able to edit widowx_envs code without rebuilding the image, this
-      # overwrites the widowx_envs directory that was copied in at build time
       - ./widowx_envs/experiments:/home/robonet/experiment
       # /media/harddrive/:/home/robonet/trainingdata  # TODO (YL): better way to mount a local directory
       - ./trainingdata:/home/robonet/trainingdata
-      # - ./widowx_envs:/home/robonet/widowx_envs
+      - ./widowx_envs:/home/robonet/widowx_envs
+      - ./widowx_controller:/home/robonet/widowx_controller
+      - ./multicam_server:/home/robonet/multicam_server
       - /dev:/dev  # for host tty access
       - ${HOME}/.Xauthority:/home/robonet/.Xauthority:ro
 
