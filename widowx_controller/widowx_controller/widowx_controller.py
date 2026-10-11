@@ -66,6 +66,25 @@ NEUTRAL_JOINT_STATE = np.array(
 )
 DEFAULT_ROTATION = np.array([[0, 0, 1.0], [0, 1.0, 0], [-1.0, 0, 0]])
 
+
+def ModifiedIKinSpace(Slist, M, T, thetalist0, eomg, ev, maxiterations=40):
+    """
+    modern_robotics IKinSpace with maxiterations exposed (the library hard-codes 20).
+    https://github.com/NxRLab/ModernRobotics/blob/master/packages/Python/modern_robotics/core.py
+    """
+    thetalist = np.array(thetalist0).copy()
+    i = 0
+    Tsb = FKinSpace(M, Slist, thetalist)
+    Vs = np.dot(Adjoint(Tsb), se3ToVec(MatrixLog6(np.dot(TransInv(Tsb), T))))
+    err = np.linalg.norm([Vs[0], Vs[1], Vs[2]]) > eomg or np.linalg.norm([Vs[3], Vs[4], Vs[5]]) > ev
+    while err and i < maxiterations:
+        thetalist = thetalist + np.dot(np.linalg.pinv(JacobianSpace(Slist, thetalist)), Vs)
+        i = i + 1
+        Tsb = FKinSpace(M, Slist, thetalist)
+        Vs = np.dot(Adjoint(Tsb), se3ToVec(MatrixLog6(np.dot(TransInv(Tsb), T))))
+        err = np.linalg.norm([Vs[0], Vs[1], Vs[2]]) > eomg or np.linalg.norm([Vs[3], Vs[4], Vs[5]]) > ev
+    return thetalist, not err
+
 ##############################################################################
 
 
@@ -106,7 +125,9 @@ class ModifiedInterbotixArmXSInterface(InterbotixArmXSInterface):
         """
         this version of set_ee_pose_matrix does not set the velocity profile registers in the servos and therefore runs faster
         """
-        theta_list, success = IKinSpace(self.robot_des.Slist, self.robot_des.M, T_sd, guess, 0.001, 0.001)
+        if guess is None:
+            guess = self.initial_guesses[0]
+        theta_list, success = ModifiedIKinSpace(self.robot_des.Slist, self.robot_des.M, T_sd, guess, 0.001, 0.001)
         solution_found = True
         # Check to make sure a solution was found and that no joint limits were violated
         if success:
@@ -350,8 +371,8 @@ class WidowX_Controller(RobotControllerBase, Node):
                     )
 
         except Exception as e:
-            self.get_logger().error(f"stuck during move: {e}")
-            self.move_to_neutral()
+            self.get_logger().error(f"error during move: {e!r}")
+            raise Environment_Exception from e
 
     def set_joint_angles(self, target_positions, duration=4):
         target_positions_to_reach = [target_positions]
@@ -528,14 +549,14 @@ class WidowX_Controller(RobotControllerBase, Node):
             self._gripper.open()
         else:
             self.des_gripper_state = np.array([1])
-            self.bot.gripper.open()
+            self.bot.gripper.release()
 
     def close_gripper(self, wait=False):
         if self.custom_gripper_controller:
             self._gripper.close()
         else:
             self.des_gripper_state = np.array([0])
-            self.bot.gripper.close()
+            self.bot.gripper.grasp()
 
 
 def main():

@@ -120,7 +120,7 @@ class RobotBaseEnv(BaseEnv):
         else:
             raise NotImplementedError('action mode {} not supported!'.format(self._hp.action_mode))
 
-        self.time_for_get_obs = 0.01  # measured empirically, might need to be adjusted.
+        self.time_for_get_obs = 0.08  # measured empirically, might need to be adjusted
 
     def controller(self):
         """Public method to access the controller"""
@@ -267,10 +267,8 @@ class RobotBaseEnv(BaseEnv):
         if tstamp_return_obs is None:
             return self.current_obs() # or None?
 
-        #if self._hp.adaptive_wait:
-        #    t1 = time.time()
-        #    self.adaptive_wait(tstamp_return_obs - self.time_for_get_obs * 1.1)
-            # print('adaptive wait for ', time.time() - t1)
+        if self._hp.adaptive_wait:
+            self.adaptive_wait(tstamp_return_obs - self.time_for_get_obs * 1.1)
         obs = self.current_obs()
         return obs
 

@@ -118,9 +118,9 @@ class WidowXVelocityController(WidowX_Controller):
                 self._gripper.close()
         else:
             if readings["left"]:
-                self.bot.gripper.open()
+                self.bot.gripper.release()
             if readings["right"]:
-                self.bot.gripper.close()
+                self.bot.gripper.grasp()
 
         if self.enable_rotation:
             pose = self.get_cartesian_pose(matrix=True)

@@ -8,15 +8,14 @@ from multicam_server.topic_utils import IMTopic
 from widowx_envs.widowx_env import VR_WidowX
 from widowx_envs.control_loops import TimedLoop
 from widowx_envs.policies.vr_teleop_policy import VRTeleopPolicy
+from widowx_envs.utils.camera_config import imtopics
+
+# cameras come from widowx_envs/cameras.yaml (pick them with select_cameras.py); this is the fallback
+camera_topics, depth_camera_topics = imtopics(default_camera_topics=['/D435/camera/D435/color/image_raw'])
 
 env_params = {
-    'camera_topics': [IMTopic('/camera/image_raw'),
-                      #IMTopic('/D435/camera/D435/color/image_raw'),
-                      #IMTopic('/blue/image_raw'),
-                      #IMTopic('/wrist/image_raw')
-                      ],
-    #'depth_camera_topics': [IMTopic('/D435/camera/D435/depth/image_rect_raw', dtype='16UC1')],
-    'depth_camera_topics': [],
+    'camera_topics': camera_topics,
+    'depth_camera_topics': depth_camera_topics,
     'gripper_attached': 'custom',
     'skip_move_to_neutral': True,
     'move_to_rand_start_freq': -1,

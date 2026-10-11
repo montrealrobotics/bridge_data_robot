@@ -47,11 +47,19 @@ def parse_camera_topics(topics: str) -> list:
     return [{"name": t.strip()} for t in topics.split(",") if t.strip()]
 
 
-# Image topics the client asks the robot to stream, e.g. for the RealSense node:
-#   WIDOWX_CAMERA_TOPICS=/D435/camera/D435/color/image_raw
-DEFAULT_CAMERA_TOPICS = parse_camera_topics(
-    os.environ.get("WIDOWX_CAMERA_TOPICS", "/blue/image_raw")
-)
+def _default_camera_topics():
+    """$WIDOWX_CAMERA_TOPICS, else the colour cameras in cameras.yaml (select_cameras.py), else /blue/image_raw."""
+    if os.environ.get("WIDOWX_CAMERA_TOPICS"):
+        return parse_camera_topics(os.environ["WIDOWX_CAMERA_TOPICS"])
+    from widowx_envs.utils.camera_config import load_camera_config
+    cfg = load_camera_config()
+    if cfg and cfg["camera_topics"]:
+        return [{"name": t} for t in cfg["camera_topics"]]
+    return parse_camera_topics("/blue/image_raw")
+
+
+# Image topics the client asks the robot to stream
+DEFAULT_CAMERA_TOPICS = _default_camera_topics()
 
 
 class WidowXConfigs:
