@@ -213,6 +213,8 @@ class RobotBaseEnv(BaseEnv):
         return next_transform, new_gripperstate
 
     def get_target_state(self):
+        if self._previous_target_qpos is None:
+            self._reset_previous_qpos()
         return tr.state2transform(self._previous_target_qpos, self._controller.default_rot)
 
     def step(self, action, tstamp_return_obs=None, blocking=True):

@@ -11,7 +11,7 @@ services:
       - ROBONETV2_ARM=wx250s
       - DATA=/home/robonet/trainingdata
       - EXP=/home/robonet/experiments
-      - USE_REALSENSE=false
+      - USE_REALSENSE=true
     user: 1000:1000
     group_add:
       - "46"

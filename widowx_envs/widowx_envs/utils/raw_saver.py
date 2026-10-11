@@ -3,7 +3,7 @@ import shutil
 import pickle as pkl
 import cv2
 import copy
-from widowx_envs.utils.utils import AttrDict
+from widowx_envs.utils.utils import AttrDict, banner
 import glob
 
 import numpy as np
@@ -21,9 +21,7 @@ class RawSaver():
 
     def save_traj(self, itr, agent_data=None, obs_dict=None, policy_outputs=None, reward_data=None):
 
-        print("##################################")
-        print('saving trajectory number {}'.format(count_trajs(self.save_dir) + 1))
-        print("##################################")
+        banner('Saving trajectory number {}'.format(count_trajs(self.save_dir) + 1), 'ok')
 
         igrp = itr // self.ngroup
         group_folder = os.path.join(self.save_dir , 'raw/traj_group{}'.format(igrp))

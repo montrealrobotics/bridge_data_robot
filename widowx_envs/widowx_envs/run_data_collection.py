@@ -65,7 +65,7 @@ class DataCollectionManager(object):
         print('#################################################')
         for k, v in meta_data_dict.items():
             print('{}: {}'.format(k,v))
-        ask_confirm('Is the meta data correct? press y/n')
+        ask_confirm('Is the meta data correct? [Y/n]', default=True)
         with open(os.path.join(metadata_destination, "collection_metadata.json"), 'w') as outfile:
             json.dump(meta_data_dict, outfile)
 

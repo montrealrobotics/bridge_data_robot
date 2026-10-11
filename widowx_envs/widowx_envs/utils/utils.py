@@ -165,20 +165,31 @@ if sys.version_info[0] == 2:
 else:
     input_fn = input
 
-def ask_confirm(text):
-    print(text)
-    valid = False
-    response = False
-    while not valid:
-        str = input_fn()
-        valid = True
-        if str == 'y':
-            response = True
-        elif str == 'n':
-            response = False
-        else:
-            valid = False
-    return response
+_BANNER_STYLES = {
+    'prompt': '\033[1;30;43m',  # waiting for the operator: black on yellow
+    'ok': '\033[1;30;42m',      # black on green
+    'bad': '\033[1;97;41m',     # white on red
+}
+
+
+def banner(text, style='prompt'):
+    """Print an operator message so it stands out from the ROS logging (plain text when not on a terminal)."""
+    if sys.stdout.isatty() and 'NO_COLOR' not in os.environ:
+        text = '{} {} \033[0m'.format(_BANNER_STYLES[style], text)
+    print(text, flush=True)
+
+
+def ask_confirm(text, default=None):
+    """Ask a y/n question. With default=True/False, pressing Enter answers with the default."""
+    banner(text)
+    while True:
+        answer = input_fn().strip().lower()
+        if answer in ('y', 'yes'):
+            return True
+        if answer in ('n', 'no'):
+            return False
+        if answer == '' and default is not None:
+            return default
 
 def read_yaml_file(path):
     content = yaml.load(open(os.path.expanduser(path), 'r'), Loader=yaml.CLoader)

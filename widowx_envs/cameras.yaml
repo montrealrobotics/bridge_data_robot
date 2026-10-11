@@ -1,0 +1,5 @@
+# written by select_cameras.py
+camera_topics:
+- /D435/camera/D435/color/image_raw
+depth_camera_topics:
+- /D435/camera/D435/depth/image_rect_raw

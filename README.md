@@ -106,6 +106,11 @@ Run `adb devices` to verify that the device is visible.
 
 This is expected, as our data collection requires the use of a Meta Quest VR headset to control the widowx arm. Turn on and connect the VR headset to the computer via USB. Make sure USB debugging is enabled and answer "Yes/Agree" to any prompts that appear in the headset. 
 
+You will be prompted to confirm that the meta data is correct, press enter for 'Y'.
+
+The robot will start in a neutral pose, press handle on the VR controller to start moving the robot, trigger controlls the gripper.
+Prompts in the terminal will instruct you how to end trajectories and save/discard them.
+
 ## Evaluating policies
 
 Policies run on an inference machine that controls the robot over the network (server-client): the robot

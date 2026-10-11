@@ -7,7 +7,7 @@ import numpy as np
 import math
 from widowx_envs.base.robot_base_env import RobotBaseEnv
 from widowx_envs.utils.exceptions import Environment_Exception
-from widowx_envs.utils.utils import ask_confirm
+from widowx_envs.utils.utils import ask_confirm, banner
 from skimage.transform import resize
 
 import os
@@ -197,8 +197,9 @@ class VR_WidowX(WidowXEnv):
         self.task_stage = 0
         obs = super(VR_WidowX, self).reset(itraj=itraj)
         start_key = 'handle'
-        print('waiting for {} button press to start recording. Press B to go to neutral.'.format(start_key))
+        banner('Press GRIP to start recording  (B: To go to neutral)')
         buttons = self.get_vr_buttons()
+        banner('Press B to end trajectory...')
         while not buttons[start_key]:
             buttons = self.get_vr_buttons()
             time.sleep(0.01)
@@ -207,23 +208,23 @@ class VR_WidowX(WidowXEnv):
                 # the arm moved, so the target pose teleop starts from has to follow (otherwise it is
                 # still the pre-neutral pose and every step commands that pose)
                 self._reset_previous_qpos()
-                print("moved to neutral. waiting for {} button press to start recording.".format(start_key))
+                banner('Moved to neutral. Press GRIP to start recording')
         return self.current_obs()
 
     def ask_confirmation(self):
         print('current endeffector pos', self.get_full_state()[:3])
         print('current joint angles pos', self._controller.get_joint_angles())
-        print('Was the trajectory okay? Press A to confirm and RJ to discard')
+        banner('Trajectory done. Keep it?  A: save   right joystick press: discard')
         buttons = self.get_vr_buttons()
         while not buttons['A'] and not buttons['RJ']:
             buttons = self.get_vr_buttons()
             time.sleep(0.01)
 
         if buttons['RJ']:
-            print('trajectory discarded!')
+            banner('Trajectory discarded', 'bad')
             return False
         if buttons['A']:
-            print('trajectory accepted!')
+            banner('Trajectory accepted', 'ok')
             return True
 
 
@@ -232,8 +233,7 @@ class VR_WidowX_DAgger(VR_WidowX):
         super(VR_WidowX_DAgger, self).__init__(env_params, **kwargs)
 
     def ask_confirmation(self):
-        print('Was the trajectory okay? \
-            Press A to save a successful trajectory, trigger to save an unsuccessful trajectory, and RJ to discard')
+        banner('Trajectory done.  A: save as success   trigger: save as failure   right joystick press: discard')
         buttons = self.get_vr_buttons()
 
         while buttons['A'] or buttons['RJ'] or buttons['RTr']:
@@ -245,13 +245,13 @@ class VR_WidowX_DAgger(VR_WidowX):
             time.sleep(0.01)
 
         if buttons['RJ']:
-            print('trajectory discarded!')
+            banner('Trajectory discarded', 'bad')
             return False
         elif buttons['A']:
-            print('successful trajectory accepted!')
+            banner('Successful trajectory accepted', 'ok')
             return 'Success'
         elif buttons['RTr']:
-            print('unsuccessful trajectory accepted!')
+            banner('Unsuccessful trajectory accepted', 'ok')
             return 'Failure'
 
 

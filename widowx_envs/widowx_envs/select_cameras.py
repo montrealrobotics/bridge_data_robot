@@ -4,6 +4,7 @@
 Shows every image topic that is currently being published (colour and 16-bit depth) as a thumbnail.
 Click a thumbnail to select / deselect it, then press  s  to save the selection to cameras.yaml
 (see widowx_envs/utils/camera_config.py), which data collection, teleop and eval read.
+New topics are picked up automatically (rescanned every 2 s).
 Keys:  s save   r rescan topics   q / Esc quit
 Run it where the cameras are visible to ROS (inside the robot container, from an ssh -X session).
 """
@@ -121,8 +122,15 @@ def main():
 
     cv2.namedWindow(WINDOW, cv2.WINDOW_AUTOSIZE)
     cv2.setMouseCallback(WINDOW, on_mouse)
+    last_scan = time.time()
     try:
         while True:
+            if time.time() - last_scan > 2.0:  # discovery can take a few seconds to find every topic
+                last_scan = time.time()
+                topics = node.scan()
+                if topics != layout["topics"]:
+                    layout["topics"], layout["cols"] = topics, max(1, min(3, len(topics)))
+                    print("image topics found:", topics)
             cv2.imshow(WINDOW, draw_grid(node, layout["topics"], selected, layout["cols"]))
             key = cv2.waitKey(50) & 0xFF
             if key in (ord("q"), 27) or cv2.getWindowProperty(WINDOW, cv2.WND_PROP_VISIBLE) < 1:

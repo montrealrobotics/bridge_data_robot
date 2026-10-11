@@ -412,7 +412,7 @@ def show_video(client, duration, full_image=True):
             img = res["image"]
             # if img.shape[0] != 3:  # sanity check to make sure it's not flattened
             img = (img.reshape(3, 256, 256).transpose(1, 2, 0) * 255).astype(np.uint8)
-        cv2.imshow("img", img)
+        cv2.imshow("img", cv2.cvtColor(img, cv2.COLOR_RGB2BGR))
         cv2.waitKey(10)  # 10 ms
 
 
