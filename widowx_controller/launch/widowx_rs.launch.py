@@ -68,6 +68,7 @@ def generate_launch_description():
         launch_arguments={
             "robot_model": EnvironmentVariable("ROBONETV2_ARM"),
             "use_rviz": "false",
+            "load_configs": "false",
         }.items(),
     )
 
@@ -84,21 +85,27 @@ def generate_launch_description():
 
     realsense2_camera_dir = get_package_share_directory("realsense2_camera")
     realsense_launch = GroupAction(
-        [
+        condition=IfCondition(LaunchConfiguration("realsense")),
+        actions=[
             PushRosNamespace(LaunchConfiguration("camera1")),
-            IncludeLaunchDescription(
-                PythonLaunchDescriptionSource(
-                    [os.path.join(realsense2_camera_dir, "launch", "rs_launch.py")]
-                ),
-                condition=IfCondition(LaunchConfiguration("realsense")),
-                launch_arguments={
+            GroupAction(
+                scoped=True,
+                forwarding=False,
+                launch_configurations={
                     "camera_name": LaunchConfiguration("tf_prefix_camera1"),
                     "initial_reset": LaunchConfiguration("initial_reset"),
                     "rgb_camera.color_profile": LaunchConfiguration("color_profile_camera1"),
                     "depth_module.depth_profile": LaunchConfiguration("depth_profile_camera1"),
-                }.items(),
+                },
+                actions=[
+                    IncludeLaunchDescription(
+                        PythonLaunchDescriptionSource(
+                            [os.path.join(realsense2_camera_dir, "launch", "rs_launch.py")]
+                        ),
+                    ),
+                ],
             ),
-        ]
+        ],
     )
 
     launch_description_entities = [
