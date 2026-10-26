@@ -159,7 +159,9 @@ class GripperController(GripperControllerBase):
 
         if moving:
             gripper_pos = self.get_gripper_pos()
-            ctrl = (des_pos - gripper_pos) * 300
+            err = des_pos - gripper_pos
+            # deadband: without it the saturated P loop flips the PWM sign around the target and the gripper buzzes
+            ctrl = 0.0 if abs(err) < 0.001 else err * 300
             pwm = self.get_gripper_pwm(ctrl)
 
             gripper_command = JointSingleCommand()

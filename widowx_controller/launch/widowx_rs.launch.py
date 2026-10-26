@@ -68,7 +68,7 @@ def generate_launch_description():
         launch_arguments={
             "robot_model": EnvironmentVariable("ROBONETV2_ARM"),
             "use_rviz": "false",
-            "load_configs": "false",
+            "load_configs": "true",
         }.items(),
     )
 

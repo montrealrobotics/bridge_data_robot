@@ -34,3 +34,4 @@ services:
       - ./multicam_server:/home/robonet/multicam_server
       - /dev:/dev  # for host tty access
       - ${HOME}/.Xauthority:/home/robonet/.Xauthority:ro
+      - ${HOME}/.android:/home/robonet/.android  # adb key, so the headset stays authorised across container rebuilds

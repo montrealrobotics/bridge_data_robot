@@ -4,6 +4,7 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration, PythonExpression
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 from launch.conditions import IfCondition, UnlessCondition
 
 def generate_launch_description():
@@ -100,7 +101,10 @@ def generate_launch_description():
             condition=UnlessCondition(LaunchConfiguration('python_node')),
             package='image_publisher', executable='image_publisher_node', output='screen',
             arguments=[LaunchConfiguration('device_0')],
-            parameters=[{'use_sim_time': LaunchConfiguration('use_sim_time')}],
+            # image_publisher defaults to publish_rate 10 Hz and fps was never passed: frames queued in the V4L2
+            # buffer and every published image lagged. Publish at the camera rate instead.
+            parameters=[{'use_sim_time': LaunchConfiguration('use_sim_time'),
+                         'publish_rate': ParameterValue(LaunchConfiguration('fps'), value_type=float)}],
             remappings=[('image_raw', image_topic),
                         ('camera_info', image_info_topic)
                         ]

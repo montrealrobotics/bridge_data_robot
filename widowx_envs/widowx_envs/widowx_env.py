@@ -153,6 +153,9 @@ class VR_WidowX(WidowXEnv):
     def __init__(self, env_params=None, **kwargs):
         super(VR_WidowX, self).__init__(env_params, **kwargs)
         self.task_stage = 0
+        # True while the save/discard question is shown: the right joystick press then means "discard",
+        # so the VR policy must not also use it to reset the forward direction
+        self.awaiting_confirmation = False
 
         from oculus_reader import OculusReader
         self.oculus_reader = OculusReader()
@@ -212,6 +215,13 @@ class VR_WidowX(WidowXEnv):
         return self.current_obs()
 
     def ask_confirmation(self):
+        self.awaiting_confirmation = True
+        try:
+            return self._ask_confirmation()
+        finally:
+            self.awaiting_confirmation = False
+
+    def _ask_confirmation(self):
         print('current endeffector pos', self.get_full_state()[:3])
         print('current joint angles pos', self._controller.get_joint_angles())
         banner('Trajectory done. Keep it?  A: save   right joystick press: discard')
@@ -232,7 +242,7 @@ class VR_WidowX_DAgger(VR_WidowX):
     def __init__(self, env_params=None, **kwargs):
         super(VR_WidowX_DAgger, self).__init__(env_params, **kwargs)
 
-    def ask_confirmation(self):
+    def _ask_confirmation(self):
         banner('Trajectory done.  A: save as success   trigger: save as failure   right joystick press: discard')
         buttons = self.get_vr_buttons()
 

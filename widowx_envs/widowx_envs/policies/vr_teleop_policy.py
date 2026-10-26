@@ -5,7 +5,7 @@ import time
 import numpy as np
 
 from widowx_envs.policies.policy import Policy
-from widowx_envs.utils.utils import AttrDict
+from widowx_envs.utils.utils import AttrDict, banner
 import widowx_envs.utils.transformation_utils as tr
 
 
@@ -71,6 +71,8 @@ class VRTeleopPolicy(Policy):
     def _update_internal_state(self, num_wait_sec=5, hz=50):
         side = self.controller_id.upper()
         last_read_time = time.time()
+        joystick_was_pressed = False
+        joystick_blocked = False  # a press that started as "discard" stays ignored until released
         while True:
             time.sleep(1 / hz)
             poses, buttons = self.reader.get_transformations_and_buttons()
@@ -79,9 +81,15 @@ class VRTeleopPolicy(Policy):
                 if self.controller_id not in poses or side + "G" not in buttons:
                     continue
 
+                # the joystick press also means "discard" while the env asks to save the trajectory
+                raw_joystick = buttons[side + "J"]
+                awaiting_confirmation = getattr(self.env, "awaiting_confirmation", False)
+                joystick_blocked = raw_joystick and (joystick_blocked or awaiting_confirmation)
+                joystick_pressed = raw_joystick and not joystick_blocked
+
                 toggled = self._state["movement_enabled"] != buttons[side + "G"]
                 self.update_sensor = self.update_sensor or buttons[side + "G"]
-                self.reset_orientation = self.reset_orientation or buttons[side + "J"]
+                self.reset_orientation = self.reset_orientation or joystick_pressed
                 self.reset_origin = self.reset_origin or toggled
 
                 self._state["poses"] = poses
@@ -91,7 +99,7 @@ class VRTeleopPolicy(Policy):
                 last_read_time = time.time()
 
                 # update the definition of "forward"
-                stop_updating = buttons[side + "J"] or self._state["movement_enabled"]
+                stop_updating = joystick_pressed or self._state["movement_enabled"]
                 if self.reset_orientation:
                     rot_mat = np.asarray(poses[self.controller_id])
                     if stop_updating:
@@ -102,6 +110,10 @@ class VRTeleopPolicy(Policy):
                         rot_mat = np.eye(4)
                         self.reset_orientation = True
                     self.vr_to_global_mat = rot_mat
+                    if not self.reset_orientation and not (joystick_pressed and joystick_was_pressed):
+                        cause = 'joystick click' if joystick_pressed else 'first grip'
+                        banner('Forward direction set to the controller heading ({})'.format(cause), 'ok')
+                joystick_was_pressed = joystick_pressed
 
     def _process_reading(self):
         pose = self.global_to_env_mat @ self.vr_to_global_mat @ np.asarray(self._state["poses"][self.controller_id])
